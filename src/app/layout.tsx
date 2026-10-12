@@ -22,7 +22,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
       </head>
       <body className={`${jakarta.variable} antialiased`}>
-        <aside className="fixed left-0 top-0 z-50 flex h-screen w-60 flex-col justify-between border-r border-line bg-white p-5 shadow-card max-md:hidden">
+        <aside className="fixed left-0 top-0 z-50 flex h-screen w-60 flex-col justify-between gap-4 overflow-y-auto border-r border-line bg-white p-5 shadow-card max-md:hidden">
           <div className="space-y-6">
             <Link href="/" className="flex items-center gap-2 px-1">
               <span className="material-symbols-outlined text-brand">auto_awesome</span>

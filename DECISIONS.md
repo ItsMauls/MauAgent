@@ -93,3 +93,76 @@ Gaps vs PRD F10/F13:
 - **Flag:** `Setting.memoryEnabled` (default on). Off means no recall, no episodes and no `AgentMemoryUse` rows, which is exactly the old path. The UI toggle comes in Stage 5.
 - **Experience is computed on read** (`agentExperience`), not stored. A role "worked on" a campaign if it has an artifact there (the Videographer if the campaign has shots). Delivered = `APPROVED|PUBLISHED`. First-pass rate = delivered campaigns with no revision aimed at that role. Seniority is a pure function: Lead at 75 delivered and ≥0.8, Senior at 30 and ≥0.7, Mid at 10 and ≥0.5, otherwise Junior. Thresholds are in `LEVELS`.
 - **Size and decay:** content is capped and recall decays by recency now. Archiving, per-role caps and confidence decay come in Stage 3 consolidation.
+
+## Role workspaces: audit (12 Oct 2026)
+This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent Manager. It assumes things this repo does not have:
+- **No monorepo** (see Phase 0). `apps/web` and `packages/*` map to `src/app`, `src/lib/{agents,workflows,providers,media}` and `prisma/`.
+- **Brief overridden by earlier owner rulings:** the UI is English, not Indonesian (above). Seedance replaces Veo, so the brief's `veo_api` is `seedance_api`.
+- **Missing before this work:**
+  - Publishing: no F11 code, no `Publisher`, no `PublishJob`.
+  - Data: no `MetricSnapshot` or `TrendSignal`.
+  - Accounts: no OAuth and no token encryption.
+  - Pages: no Costs, Trends, Analytics or Agent Team page, and no "Connected accounts" Settings tab. Settings is one form, so there is no data to migrate.
+  - Providers: no Gemini image provider.
+  - Agents: no deliberation.
+  - Libraries: no PDF library and no sharp.
+- **Present and reused:**
+  - Agents: personas (`agents/persona.ts`) and memory and experience (`agents/memory.ts`).
+  - Cost and status: budget gate and PriceBook (`cost.ts`), and the state machine (`status.ts`).
+  - Media: S3 presign with a 15-minute TTL (`s3.ts`) and FFmpeg (`media/`).
+  - App patterns: the server action → `inngest.send` flow (`app/actions.ts`), and the root `loading.tsx`/`error.tsx`, which cover every route.
+
+## Role workspaces: decisions
+- **Publishing (owner, 12 Oct 2026):** the `PublishJob` table and account connection land now. The Instagram/TikTok/Orshot publishers and multi-account posting land with the Officer workspace (Stage 5). Until then the pipeline still ends at `APPROVED`.
+- **OAuth behind env (owner, 12 Oct 2026):** there are no Meta/TikTok apps yet. Without keys, the Connect button is disabled and the page names the env vars to set.
+- **Schema lands per stage** (same rule as above):
+  - Stage 1 migrates `SocialAccount` and `PublishJob` only.
+  - `ContentStrategy`, `ContentPlan` and `ContentItem` land in Stage 4; `Report` lands in Stage 6. The brief lists them all under Stage 1, but nothing uses them before those stages.
+- **`ContentItem` → `Campaign` is 1:1** (Stage 4), via a nullable unique `Campaign.contentItemId`. Campaigns created from New Brief stay valid without an item. `campaign/brief.submitted` gains optional `contentItemId`, `talentIds`, `locationId` and `targetAccountIds` fields, so old events still parse.
+- **Single user.** Workspaces are sidebar groups, not permissions. To support more users later, add `ownerId`/`workspaceId` columns to the new tables and scope queries by them. No auth model changes now.
+- **Sidebar groups:**
+  - Groups: Operations (Campaigns, New Brief, Approval, Pipeline), then Social Media Specialist (Accounts), then Settings.
+  - The Officer and Insights groups appear once their pages exist, following the rule that items arrive with their page.
+  - Settings links to `/accounts`.
+- **Mapping for later stages:**
+  - Talent collage: FFmpeg `xstack` + `drawtext`, so no new dependency.
+  - Talent cost: needs `CostEntry.campaignId` to be nullable (already planned) and a new `CostReason` value `talent_generation`.
+  - Seedance reference images: verify support in the ModelArk docs. The fallback is a Gemini keyframe → image-to-video.
+  - PDF approach: decided in Stage 6.
+  - Deliberation: does not exist, so Stage 7 only adds the two roles, their personas and memory, plus hook points.
+
+## Stage 1 (workspaces): social accounts
+- **Tokens are encrypted with AES-256-GCM** (`src/lib/crypto.ts`, `node:crypto`).
+  - Stored format: `v1:iv:tag:ciphertext`. The key comes from env `TOKEN_ENC_KEY` (32-byte hex).
+  - Without a valid key, encryption throws; plaintext is never stored. Rotating the key orphans existing tokens (reconnect). Key rotation is not built.
+- **Tokens never reach the client.** Pages select through `ACCOUNT_PUBLIC_SELECT` (`src/lib/accounts.ts`), which has no `*Enc` columns, and a test enforces that. Provider error strings never include the request URL, because Meta takes `access_token` as a query parameter.
+- **One OAuth route per platform:** `/api/oauth/[platform]` starts the flow when there is no `code` or `error` in the URL; otherwise it acts as the callback.
+  - `state` is a random value kept in an httpOnly cookie scoped to the route path and compared in constant time.
+  - Auth0 middleware already guards the route.
+  - Reconnecting the same platform account updates its tokens and reactivates it (unique on `(platform, platformUserId)`).
+- **Instagram** uses the Instagram API with Instagram Login, verified against Meta's docs in Oct 2026:
+  - Scopes: `instagram_business_basic`, `instagram_business_content_publish`.
+  - Tokens: the code → short-lived token is exchanged for a 60-day long-lived token, refreshed with `ig_refresh_token`.
+  - Profile: `/me?fields=user_id,username,account_type`. `user_id` is the IG account ID used in API paths.
+  - Quota: `GET /{ig-user-id}/content_publishing_limit?fields=quota_usage,config`. The reference says the total is currently 50 per 24 h.
+  - The Graph version comes from env `IG_GRAPH_VERSION` (default `v25.0`).
+- **TikTok** uses Login Kit for Web v2 (no PKCE for web):
+  - Scopes: `user.info.basic`, `video.upload`.
+  - Lifetimes: the access token lasts 24 h and the refresh token 365 d.
+  - Handle: `display_name`, because `@username` needs `user.info.profile` and an extra app review.
+  - TikTok redirect URIs must be https, so local testing needs a tunnel.
+  - The audit status is entered by hand on the account card.
+- **Token status is computed on read** (`tokenStatus`), not stored:
+  - The deadline is the refresh token's expiry when there is one (TikTok); otherwise it is the access token's expiry.
+  - Under 7 days left → "expiring". Expired, or `lastError` starting with `reauth` → "reconnect needed".
+  - A banner on `/accounts` lists accounts in either state, with a Reconnect link.
+- **Daily check** (`accounts-refresh`: Inngest cron at 03:00 Asia/Jakarta, plus the event `accounts/refresh` from "Check now"):
+  - Refreshes access tokens within 7 days of expiry (every TikTok token, every day).
+  - Reads the IG quota.
+  - Writes failures to `lastError` instead of retrying. An invalid-token response (HTTP 401, Meta code 190, a TikTok error body) is prefixed `reauth:`.
+  - The calls are free, but they still run in Inngest so the dashboard never calls providers directly.
+- **Deactivate keeps the row** and its `PublishJob` history; there is no delete. Publisher choices are restricted per platform (Instagram Graph only for Instagram, TikTok inbox only for TikTok; Orshot for both).
+- **`PublishJob`** stores one row per campaign per target account, with `idemKey = campaignId:socialAccountId`. Nothing writes to it until Stage 5. The account card's "scheduled posts" count reads from it.
+- **Known gaps:**
+  - The per-account performance summary needs `MetricSnapshot`, so it comes with Analytics.
+  - The Stage 5 publish step will refresh a TikTok token on demand, because the daily check alone can leave it expired for part of the day.

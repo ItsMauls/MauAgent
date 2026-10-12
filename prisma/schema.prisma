@@ -55,6 +55,7 @@ model BrandKit {
   voiceId    String?
   styleNotes String?
   campaigns  Campaign[]
+  accounts   SocialAccount[]
 }
 
 // Singleton (id = "default"): budget caps configurable from the Settings page.
@@ -85,6 +86,7 @@ model Campaign {
   shots         Shot[]
   decisions     Decision[]
   costs         CostEntry[]
+  publishJobs   PublishJob[]
 }
 
 model Run {
@@ -231,6 +233,79 @@ model AgentMemoryUse {
   createdAt  DateTime @default(now())
 
   @@unique([runId, role])
+}
+
+enum Platform {
+  instagram
+  tiktok
+}
+
+enum PublisherKind {
+  instagram_graph
+  tiktok_inbox
+  orshot
+}
+
+enum PublishStatus {
+  draft
+  scheduled
+  publishing
+  published
+  failed
+}
+
+// Connected social account (many per platform and per brand). Tokens are AES-GCM encrypted (src/lib/crypto.ts)
+// and never selected for the client: pages use ACCOUNT_PUBLIC_SELECT (src/lib/accounts.ts).
+model SocialAccount {
+  id                String        @id @default(cuid())
+  platform          Platform
+  platformUserId    String
+  handle            String
+  accountType       String?
+  brandKitId        String?
+  brandKit          BrandKit?     @relation(fields: [brandKitId], references: [id])
+  timezone          String        @default("Asia/Jakarta")
+  accessTokenEnc    String
+  refreshTokenEnc   String?
+  tokenExpiresAt    DateTime?
+  refreshExpiresAt  DateTime?
+  scopes            String[]
+  // Entered by hand: not_submitted | pending | approved | rejected (TikTok only).
+  tiktokAuditStatus String?
+  publisher         PublisherKind
+  active            Boolean       @default(true)
+  lastError         String?
+  quotaUsage        Int?
+  quotaTotal        Int?
+  quotaCheckedAt    DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  publishJobs       PublishJob[]
+
+  @@unique([platform, platformUserId])
+}
+
+// One job per campaign per target account. Posting itself arrives with the Officer workspace (Stage 5).
+model PublishJob {
+  id              String        @id @default(cuid())
+  campaignId      String
+  campaign        Campaign      @relation(fields: [campaignId], references: [id])
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id])
+  platform        Platform
+  status          PublishStatus @default(draft)
+  caption         String?
+  hashtags        String[]
+  scheduledAt     DateTime?
+  postId          String?
+  permalink       String?
+  error           String?
+  // campaignId:socialAccountId — one job per account, retries never duplicate.
+  idemKey         String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([socialAccountId, status])
 }
 
 model PriceBook {
