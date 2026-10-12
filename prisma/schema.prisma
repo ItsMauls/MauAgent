@@ -87,6 +87,25 @@ model Campaign {
   decisions     Decision[]
   costs         CostEntry[]
   publishJobs   PublishJob[]
+  creativeAssets CreativeAsset[]
+}
+
+enum CreativeKind {
+  character
+  location
+  style
+}
+
+// Reusable building block from the AI Content Creator library: a character, a location or a video style
+// (8-bit, 2D animation, …). Linked to many campaigns; the Art Director reads the linked set on every run.
+model CreativeAsset {
+  id          String       @id @default(cuid())
+  kind        CreativeKind
+  name        String
+  description String
+  imageUrls   String[]
+  campaigns   Campaign[]
+  createdAt   DateTime     @default(now())
 }
 
 model Run {

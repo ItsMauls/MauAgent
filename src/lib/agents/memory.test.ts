@@ -45,6 +45,7 @@ const brief: ClientBrief = {
   kpi: "",
   platforms: ["instagram", "tiktok"],
   budgetCapUsd: 20,
+  startDate: "",
   deadline: "",
   brandKitId: null,
   references: [],

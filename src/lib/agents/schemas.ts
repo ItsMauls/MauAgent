@@ -10,6 +10,7 @@ export const ClientBrief = z.object({
   kpi: z.string().default(""),
   platforms: z.array(Platform).min(1),
   budgetCapUsd: z.number().positive(),
+  startDate: z.string().default(""),
   deadline: z.string().default(""),
   brandKitId: z.string().nullable().default(null),
   references: z.array(z.string()).default([]),

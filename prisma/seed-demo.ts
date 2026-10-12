@@ -54,7 +54,7 @@ async function put(key: string, file: string) {
 
 const brief = (product: string, objective: string, audience: string): ClientBrief => ({
   objective, product, audience, kpi: "1,000 profile visits in 2 weeks", platforms: ["instagram", "tiktok"],
-  budgetCapUsd: 10, deadline: "2026-10-31", brandKitId: null, references: [], defaultSource: "manual_upload",
+  budgetCapUsd: 10, startDate: "", deadline: "2026-10-31", brandKitId: null, references: [], defaultSource: "manual_upload",
 });
 
 const shot = (shotId: string, subject: string, voLine: string) => ({

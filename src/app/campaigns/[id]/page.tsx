@@ -39,6 +39,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
       artifacts: { orderBy: [{ agentRole: "asc" }, { version: "desc" }] },
       shots: { orderBy: { shotId: "asc" }, include: { assets: { orderBy: { version: "desc" } } } },
       decisions: { orderBy: { createdAt: "desc" } },
+      creativeAssets: { select: { id: true, kind: true, name: true } },
     },
   });
   if (!c) notFound();
@@ -121,7 +122,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
       </nav>
 
       <section className="card p-8">
-        {tab === "brief" && <BriefTab brief={c.clientBrief as Record<string, unknown>} />}
+        {tab === "brief" && <BriefTab brief={c.clientBrief as Record<string, unknown>} kit={c.creativeAssets} />}
         {tab === "artifacts" && <ArtifactsTab campaignId={c.id} artifacts={c.artifacts} sp={sp} />}
         {tab === "shots" && <ShotsTab shots={c.shots} />}
         {tab === "assets" && <AssetsTab shots={c.shots} />}
@@ -141,9 +142,16 @@ const Empty = ({ icon, text }: { icon: string; text: string }) => (
   </div>
 );
 
-function BriefTab({ brief }: { brief: Record<string, unknown> }) {
+function BriefTab({ brief, kit }: { brief: Record<string, unknown>; kit: { id: string; kind: string; name: string }[] }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <dt className="label">Creative kit</dt>
+        <dd className="text-sm">
+          {kit.map((a) => `${a.name} (${a.kind})`).join(", ") || "—"}{" "}
+          <Link href="/creator" className="font-semibold text-brand">Edit links →</Link>
+        </dd>
+      </div>
       {Object.entries(brief).map(([k, v]) => (
         <div key={k}>
           <dt className="label">{k}</dt>
