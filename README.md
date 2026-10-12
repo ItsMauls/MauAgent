@@ -10,4 +10,6 @@ Multi-agent AI creative agency. PRD: `PRD-MAUAGENT.md` · decisions: `DECISIONS.
 5. Terminal 1: `npm run dev` · Terminal 2: `npm run inngest` (UI at http://localhost:8288)
 6. Open http://localhost:3000 → New brief.
 
+Demo data: `npm run db:seed:demo` (2 campaigns; rerun after starting S3 so the demo videos play).
+
 Tests: `npm test` (Producer, ffprobe validation, 1080×1920 final cut; no DB/API key needed).
