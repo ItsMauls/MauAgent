@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/pipeline.test.ts src/lib/cost.test.ts src/lib/status.test.ts src/lib/agents/persona.test.ts src/lib/agents/memory.test.ts src/lib/crypto.test.ts src/lib/accounts.test.ts",
+    "test": "tsx --test src/lib/pipeline.test.ts src/lib/cost.test.ts src/lib/status.test.ts src/lib/agents/persona.test.ts src/lib/agents/memory.test.ts src/lib/crypto.test.ts src/lib/accounts.test.ts src/lib/boards/boards.test.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",

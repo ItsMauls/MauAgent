@@ -2,8 +2,6 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { deleteCreativeAsset, linkCreativeAsset, saveCreativeAsset } from "../actions";
 
-export const dynamic = "force-dynamic";
-
 const KINDS = [
   { v: "character", t: "Characters", icon: "face", hint: "Who appears: look, outfit, age, personality. Reused word for word in every shot." },
   { v: "location", t: "Locations", icon: "location_on", hint: "Where it happens: place, time of day, props, atmosphere." },
@@ -19,25 +17,24 @@ const STYLE_PRESETS = [
   { name: "Live action", description: "Photorealistic live-action footage, natural lighting, shallow depth of field, handheld social-media feel" },
 ];
 
-export default async function CreatorPage() {
+type Kind = (typeof KINDS)[number]["v"];
+
+/** AI Content Creator library (was /creator). Content Creator shows every kind; Talent Manager only characters. */
+export async function CreatorLibrary({ kinds = ["character", "location", "style"] }: { kinds?: Kind[] }) {
   const [assets, campaigns] = await Promise.all([
-    db.creativeAsset.findMany({ orderBy: { createdAt: "desc" }, include: { campaigns: { select: { id: true } } } }),
+    db.creativeAsset.findMany({ where: { kind: { in: kinds } }, orderBy: { createdAt: "desc" }, include: { campaigns: { select: { id: true } } } }),
     db.campaign.findMany({ orderBy: { createdAt: "desc" }, select: { id: true, clientBrief: true, status: true } }),
   ]);
   const name = (c: (typeof campaigns)[number]) => (c.clientBrief as { product?: string }).product ?? c.id;
   const byId = new Map(campaigns.map((c) => [c.id, c]));
   const styleNames = new Set(assets.filter((a) => a.kind === "style").map((a) => a.name));
+  const shown = KINDS.filter((k) => kinds.includes(k.v));
 
   return (
-    <div className="space-y-6 pt-4">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          <mark className="rounded-lg bg-amber-soft px-2.5 py-0.5">AI Content Creator</mark>
-        </h1>
-        <p className="mt-2 max-w-3xl text-ink-2">
-          Design your characters, locations and video styles once, then link them to any upcoming or existing campaign. The Art Director must use the linked items in the shot list and generation prompts.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <p className="max-w-3xl text-ink-2">
+        Design characters, locations and video styles once, then link them to any upcoming or existing campaign. The Art Director must use the linked items in the shot list and generation prompts.
+      </p>
 
       <div className="grid items-start gap-6 lg:grid-cols-12">
         <form action={saveCreativeAsset} className="card space-y-4 p-6 lg:col-span-5">
@@ -45,7 +42,7 @@ export default async function CreatorPage() {
           <fieldset>
             <legend className="label">Type</legend>
             <div className="flex flex-wrap gap-2">
-              {KINDS.map((k, i) => (
+              {shown.map((k, i) => (
                 <label key={k.v} className="pill cursor-pointer border-line bg-white px-3.5 py-2 text-ink-2 has-checked:border-brand has-checked:bg-brand-soft has-checked:text-brand has-focus-visible:ring-2 has-focus-visible:ring-brand/40">
                   <input type="radio" name="kind" value={k.v} defaultChecked={i === 0} required className="sr-only" />
                   <span className="material-symbols-outlined !text-[16px]">{k.icon}</span>
@@ -71,7 +68,7 @@ export default async function CreatorPage() {
           </button>
         </form>
 
-        <div className="card p-6 lg:col-span-7">
+        {kinds.includes("style") && <div className="card p-6 lg:col-span-7">
           <h2 className="text-lg font-bold">Quick-add a video style</h2>
           <p className="text-sm text-ink-2">Presets you can link straight away. Add your own style with the form for anything else.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -90,10 +87,10 @@ export default async function CreatorPage() {
               </form>
             ))}
           </div>
-        </div>
+        </div>}
       </div>
 
-      {KINDS.map((k) => {
+      {shown.map((k) => {
         const list = assets.filter((a) => a.kind === k.v);
         return (
           <section key={k.v}>

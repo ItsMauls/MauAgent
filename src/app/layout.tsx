@@ -6,6 +6,7 @@ import { NavLinks } from "./nav";
 import { db } from "@/lib/db";
 import { auth0 } from "@/lib/auth0";
 import { QUEUE_STATUSES, StatusPill } from "./pills";
+import { boardSnapshot, roleBadges } from "@/lib/boards/snapshot";
 
 const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [approvalCount, alerts, session] = await Promise.all([
+  const [approvalCount, alerts, session, snapshot] = await Promise.all([
     db.campaign.count({ where: { status: { in: [...QUEUE_STATUSES] } } }),
     // Notifications = campaigns that need the user right now (queue + permanent failures).
     db.campaign.findMany({
@@ -25,6 +26,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       select: { id: true, status: true, clientBrief: true },
     }),
     auth0.getSession(),
+    // Sidebar status dots must never break the shell.
+    boardSnapshot().catch(() => null),
   ]);
   const user = session?.user;
   return (
@@ -41,7 +44,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <span className="text-lg font-bold tracking-tight">MauAgent</span>
               <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand">AI OS</span>
             </Link>
-            <NavLinks approvalCount={approvalCount} />
+            <NavLinks approvalCount={approvalCount} roles={snapshot ? roleBadges(snapshot) : undefined} />
           </div>
         </aside>
         <div className="md:pl-60">

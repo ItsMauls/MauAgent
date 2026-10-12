@@ -155,7 +155,7 @@ export default async function BriefPage() {
             <fieldset>
               <legend className="mb-1.5 flex w-full items-center justify-between gap-2">
                 <span className="label mb-0">Creative kit (optional)</span>
-                <Link href="/creator" className="text-[11px] font-semibold text-brand">Manage in AI Content Creator →</Link>
+                <Link href="/boards/content-creator?tab=library" className="text-[11px] font-semibold text-brand">Manage in the Content Creator library →</Link>
               </legend>
               {kit.length ? (
                 <div className="flex flex-wrap gap-2">

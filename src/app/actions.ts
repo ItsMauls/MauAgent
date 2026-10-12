@@ -156,6 +156,11 @@ export async function setAccountActive(id: string, active: boolean) {
   revalidatePath("/accounts");
 }
 
+/** Boards "Check": runs the free integration health checks in Inngest; the card reads the cached result. */
+export async function checkIntegrations() {
+  await inngest.send({ name: "integrations/check", data: {} });
+}
+
 export async function refreshAccounts(accountId?: string) {
   await inngest.send({ name: "accounts/refresh", data: { accountId: z.string().optional().parse(accountId) } });
 }
@@ -204,12 +209,12 @@ export async function saveCreativeAsset(form: FormData) {
     imageUrls: String(form.get("imageUrls") ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
   });
   await db.creativeAsset.create({ data });
-  revalidatePath("/creator");
+  revalidatePath("/boards", "layout");
 }
 
 export async function deleteCreativeAsset(form: FormData) {
   await db.creativeAsset.delete({ where: { id: z.string().min(1).parse(form.get("id")) } });
-  revalidatePath("/creator");
+  revalidatePath("/boards", "layout");
 }
 
 /** Link or unlink a library item to a campaign. Applies from the next Art Director run of that campaign. */
@@ -218,6 +223,6 @@ export async function linkCreativeAsset(form: FormData) {
   const campaignId = z.string().min(1).parse(form.get("campaignId"));
   const op = form.get("unlink") ? "disconnect" : "connect";
   await db.creativeAsset.update({ where: { id }, data: { campaigns: { [op]: { id: campaignId } } } });
-  revalidatePath("/creator");
+  revalidatePath("/boards", "layout");
   revalidatePath(`/campaigns/${campaignId}`);
 }
