@@ -105,7 +105,9 @@ export const campaignPipeline = inngest.createFunction(
               return payload;
             }),
           )
-        : step.run(`load-${role}`, () => latestPayload<T>(campaignId, role));
+        : // A campaign seeded from a Boards task may lack earlier stages (e.g. a Creative Director idea has no internal
+          // brief). Null is safe: a skipped stage's output is only read by later stages, which are seeded too.
+          step.run(`load-${role}`, async () => (await db.artifact.findFirst({ where: { campaignId, agentRole: role }, orderBy: { version: "desc" } }))?.payload as T);
 
     const noteFor = (role: string) => (role === from ? notes : undefined);
 

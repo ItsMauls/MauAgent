@@ -29,7 +29,7 @@ export function roleWork(agentRole: string, s: Snapshot): { state: AgentState; i
       .filter((t) => t.agentRole === agentRole)
       .map((t) => ({
         key: `task:${t.id}`, title: t.title, stage: t.status === "RUNNING" ? "Direct task" : t.status === "QUEUED" ? "Task queued" : "Task waiting",
-        since: t.createdAt, state: t.status === "RUNNING" ? ("busy" as const) : ("waiting" as const), href: `/boards/${t.roleSlug}?task=${t.id}`,
+        since: t.createdAt, state: t.status === "RUNNING" ? ("busy" as const) : ("waiting" as const), href: `/boards/${t.roleSlug}?tab=task&task=${t.id}`,
       })),
     ...s.waiting
       .filter((w) => GATE_OWNER[w.status]?.role === agentRole)
