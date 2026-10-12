@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl } from "./actions";
+import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl, refreshAccounts, setAccountActive, updateAccount } from "./actions";
 
 export function SourceToggle({ name, defaultValue }: { name: string; defaultValue: string }) {
   return (
@@ -265,6 +265,95 @@ export function RestoreButton({ label, action }: { label: string; action: () => 
       </button>
       <ErrorText error={error} />
     </span>
+  );
+}
+
+type AccountSettings = Parameters<typeof updateAccount>[1];
+const PUBLISHERS: Record<string, [string, string][]> = {
+  instagram: [["instagram_graph", "Instagram Graph API"], ["orshot", "Orshot"]],
+  tiktok: [["tiktok_inbox", "TikTok inbox (draft)"], ["orshot", "Orshot"]],
+};
+
+/** Per-account settings (publisher, brand, type, time zone, TikTok audit) plus check / deactivate. */
+export function AccountControls({ id, platform, active, values, brandKits }: {
+  id: string; platform: string; active: boolean; brandKits: { id: string; name: string }[];
+  values: { publisher: string; brandKitId: string | null; accountType: string | null; timezone: string; tiktokAuditStatus: string | null };
+}) {
+  const { pending, error, run } = useAction();
+  const [note, setNote] = useState<string | null>(null);
+  const opt = (f: FormData, k: string) => (f.get(k) ? String(f.get(k)) : null);
+  return (
+    <form
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      action={(f) =>
+        run(
+          () =>
+            updateAccount(id, {
+              publisher: String(f.get("publisher")) as AccountSettings["publisher"],
+              brandKitId: opt(f, "brandKitId"),
+              accountType: opt(f, "accountType") as AccountSettings["accountType"],
+              timezone: String(f.get("timezone")),
+              tiktokAuditStatus: opt(f, "tiktokAuditStatus") as AccountSettings["tiktokAuditStatus"],
+            }),
+          () => setNote("Saved."),
+        )
+      }
+      onChange={() => setNote(null)}
+    >
+      <label className="block">
+        <span className="label">Publisher</span>
+        <select name="publisher" defaultValue={values.publisher} className="input">
+          {PUBLISHERS[platform].map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <span className="label">Brand kit</span>
+        <select name="brandKitId" defaultValue={values.brandKitId ?? ""} className="input">
+          <option value="">None</option>
+          {brandKits.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <span className="label">Account type</span>
+        <select name="accountType" defaultValue={values.accountType ?? ""} className="input">
+          <option value="">Unknown</option>
+          <option value="BUSINESS">Business</option>
+          <option value="CREATOR">Creator</option>
+          <option value="MEDIA_CREATOR">Media creator</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className="label">Time zone</span>
+        <input name="timezone" defaultValue={values.timezone} required className="input" />
+      </label>
+      {platform === "tiktok" && (
+        <label className="block">
+          <span className="label">TikTok audit</span>
+          <select name="tiktokAuditStatus" defaultValue={values.tiktokAuditStatus ?? "not_submitted"} className="input">
+            <option value="not_submitted">Not submitted</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+      )}
+      <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
+        <button disabled={pending} className="btn-primary">Save</button>
+        <button type="button" disabled={pending || !active} onClick={() => run(() => refreshAccounts(id), () => setNote("Check queued. Reload in a few seconds."))} className="btn-soft">
+          <span className="material-symbols-outlined">sync</span>Check now
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => (active ? confirm("Deactivate this account? Its history is kept.") : true) && run(() => setAccountActive(id, !active))}
+          className={active ? "btn border border-red-200 bg-bad-soft text-red-800 hover:bg-red-100" : "btn-soft"}
+        >
+          {active ? "Deactivate" : "Reactivate"}
+        </button>
+        {note && !pending && <span role="status" className="text-sm text-emerald-700">{note}</span>}
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3"><ErrorText error={error} /></div>
+    </form>
   );
 }
 

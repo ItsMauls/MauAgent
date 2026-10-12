@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSettings, saveSettings } from "../actions";
 import { BudgetField, SourceToggle } from "../ui";
 
@@ -17,6 +18,14 @@ export default async function SettingsPage() {
           <span className="material-symbols-outlined">save</span>Save
         </button>
       </form>
+      <Link href="/accounts" className="card mt-6 flex items-center gap-3 p-6 hover:border-brand">
+        <span className="material-symbols-outlined text-brand">group</span>
+        <span className="flex-1">
+          <span className="block font-semibold">Connected accounts</span>
+          <span className="text-sm text-ink-2">Instagram and TikTok accounts, tokens, publisher and quota.</span>
+        </span>
+        <span className="material-symbols-outlined text-ink-3">chevron_right</span>
+      </Link>
     </div>
   );
 }

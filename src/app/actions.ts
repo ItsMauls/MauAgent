@@ -117,6 +117,33 @@ export async function budgetDecision(campaignId: string, input: BudgetDecisionIn
   revalidatePath("/", "layout");
 }
 
+const AccountInput = z.object({
+  publisher: z.enum(["instagram_graph", "tiktok_inbox", "orshot"]),
+  brandKitId: z.string().min(1).nullable(),
+  accountType: z.enum(["BUSINESS", "CREATOR", "MEDIA_CREATOR"]).nullable(),
+  timezone: z.string().refine((tz) => Intl.supportedValuesOf("timeZone").includes(tz) || tz === "UTC", "Unknown time zone"),
+  tiktokAuditStatus: z.enum(["not_submitted", "pending", "approved", "rejected"]).nullable(),
+});
+
+export async function updateAccount(id: string, input: z.infer<typeof AccountInput>) {
+  const d = AccountInput.parse(input);
+  const a = await db.socialAccount.findUniqueOrThrow({ where: { id: z.string().parse(id) }, select: { platform: true } });
+  if (d.publisher === "instagram_graph" && a.platform !== "instagram") throw new Error("Instagram Graph can only publish to Instagram");
+  if (d.publisher === "tiktok_inbox" && a.platform !== "tiktok") throw new Error("TikTok inbox can only publish to TikTok");
+  await db.socialAccount.update({ where: { id }, data: { ...d, tiktokAuditStatus: a.platform === "tiktok" ? d.tiktokAuditStatus : null } });
+  revalidatePath("/accounts");
+}
+
+/** Deactivate keeps the row and its publish history; nothing is deleted. */
+export async function setAccountActive(id: string, active: boolean) {
+  await db.socialAccount.update({ where: { id: z.string().parse(id) }, data: { active: z.boolean().parse(active) } });
+  revalidatePath("/accounts");
+}
+
+export async function refreshAccounts(accountId?: string) {
+  await inngest.send({ name: "accounts/refresh", data: { accountId: z.string().optional().parse(accountId) } });
+}
+
 /** Free restore: make an older final cut current again (no generation, no cost). */
 export async function restoreFinalCut(campaignId: string, version: number) {
   const c = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
