@@ -7,6 +7,7 @@ const items = [
   { href: "/", label: "Campaigns", icon: "grid_view" },
   { href: "/brief", label: "New Brief", icon: "auto_awesome" },
   { href: "/approval", label: "Approval", icon: "fact_check" },
+  { href: "/pipeline", label: "Pipeline", icon: "view_kanban" },
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 

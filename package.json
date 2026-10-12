@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/pipeline.test.ts src/lib/cost.test.ts",
+    "test": "tsx --test src/lib/pipeline.test.ts src/lib/cost.test.ts src/lib/status.test.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
     "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
   },
   "dependencies": {

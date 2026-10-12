@@ -29,9 +29,18 @@ import { finalCut } from "@/lib/media";
 import { download, uploadFile, uploadFromUrl } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
 import { budgetGate, campaignSpent, latestPrice, monthSpent } from "@/lib/cost";
-import type { CampaignStatus } from "@prisma/client";
+import { allowedFrom } from "@/lib/status";
+import { NonRetriableError } from "inngest";
+import type { CampaignStatus, Prisma } from "@prisma/client";
 
-const setStatus = (id: string, status: CampaignStatus) => db.campaign.update({ where: { id }, data: { status } });
+/** Status change guarded by the state machine (atomic: the WHERE only matches allowed source statuses). */
+async function setStatus(id: string, status: CampaignStatus, extra: Prisma.CampaignUpdateManyMutationInput = {}) {
+  const { count } = await db.campaign.updateMany({ where: { id, status: { in: allowedFrom(status) } }, data: { ...extra, status } });
+  if (!count) {
+    const c = await db.campaign.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    throw new NonRetriableError(`Invalid status transition ${c.status} → ${status}`);
+  }
+}
 
 /** Record a Step in the DB (for the Pipeline dashboard) around the work of a step. */
 async function tracked<T>(runId: string, agentRole: string, attempt: number, fn: () => Promise<T>): Promise<T> {
@@ -260,7 +269,7 @@ export const campaignPipeline = inngest.createFunction(
           const { payload, costUsd } = await accountTeam(brief, creative, visual);
           await saveArtifact(campaignId, "accountTeam", payload, costUsd, runId);
           const pkg = { ...payload, costSoFar: await campaignSpent(campaignId) };
-          await db.campaign.update({ where: { id: campaignId }, data: { approvalPackage: pkg, status: "AWAITING_APPROVAL" } });
+          await setStatus(campaignId, "AWAITING_APPROVAL", { approvalPackage: pkg });
         }),
       );
 
@@ -314,7 +323,8 @@ export const campaignPipeline = inngest.createFunction(
     } catch (e) {
       // Permanent failure after retries are exhausted. NonRetriable/step errors are rethrown after the status is recorded.
       await step.run("mark-failed", async () => {
-        await setStatus(campaignId, "FAILED");
+        // No throw here: a campaign already in a terminal status keeps it.
+        await db.campaign.updateMany({ where: { id: campaignId, status: { in: allowedFrom("FAILED") } }, data: { status: "FAILED" } });
         await db.run.update({ where: { id: runId }, data: { status: "failed", endedAt: new Date() } });
       });
       throw e;

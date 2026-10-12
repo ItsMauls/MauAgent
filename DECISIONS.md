@@ -52,3 +52,10 @@ Gaps vs PRD F10/F13:
 - **Known gap:** post-production does not interpret edit notes yet, so a revision routed to post-production re-renders the same cut until full F8 post-production exists.
 - **Known race (accepted):** an event sent in the few ms between a status change and `waitForEvent` becoming active is missed; same as the existing decision wait. The UI only shows the buttons once the status is set.
 - **Publication tab is an empty state** until F11 adds `PublishJob`.
+
+## Stage 2: Pipeline
+- **The state machine is enforced in code** (`src/lib/status.ts`). Pipeline status changes go through an atomic conditional update (`WHERE status IN allowedFrom(to)`). An invalid jump throws `NonRetriableError`, so the run is marked FAILED instead of silently corrupting the status. Setting the same status again is allowed (step retries). `FAILED` is reachable from any non-terminal status. The transitions include the rerun paths: REVISING/REGENERATING → AWAITING_BUDGET / AWAITING_VIDEO_UPLOAD / POST_PRODUCTION → AWAITING_APPROVAL.
+- **Lanes come from the latest Run.** A stage with no Step row but an existing artifact is shown as "Reused" (a rerun skipped it). The Videographer has no Step rows (it is many small Inngest steps), so its lane is derived from the shot slots.
+- **"Log" = Step history per campaignId + step** across all runs, with the full error and the Inngest run ID, at `/pipeline?campaign=…&step=…`. There is no separate log store; Step rows are the structured log.
+- **Polling:** `router.refresh()` every 10 s while the tab is visible (`AutoRefresh`). No websocket.
+- **Demo data:** `npm run db:seed:demo` (`prisma/seed-demo.ts`) creates `demo_kopi` (awaiting approval after one post-production revision) and `demo_bakery` (failed at the Creative Director after 4 attempts). It is idempotent with fixed IDs. Its videos are real ffmpeg clips uploaded to S3 when S3 is reachable. The demo campaigns have no live Inngest run, so decisions on them create a Decision row and send the event, but nothing advances.

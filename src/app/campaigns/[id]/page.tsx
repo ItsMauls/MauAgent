@@ -170,7 +170,7 @@ function ArtifactsTab({ campaignId, artifacts, sp }: { campaignId: string; artif
       {roles.map((r) => {
         const list = artifacts.filter((a) => a.agentRole === r);
         return (
-          <div key={r}>
+          <div key={r} id={`artifact-${r}`} className="scroll-mt-20">
             <div className="mb-2 flex items-center gap-3">
               <h3 className="font-semibold">{r}</h3>
               <span className="text-xs text-ink-2">{list.length} version{list.length === 1 ? "" : "s"}</span>

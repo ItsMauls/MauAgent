@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl } from "./actions";
 
 export function SourceToggle({ name, defaultValue }: { name: string; defaultValue: string }) {
@@ -242,6 +243,16 @@ export function BudgetGatePanel({ campaignId, gate }: { campaignId: string; gate
       <ErrorText error={error} />
     </div>
   );
+}
+
+/** Re-render the server page every `seconds` while the tab is visible (light polling, no websocket). */
+export function AutoRefresh({ seconds }: { seconds: number }) {
+  const router = useRouter();
+  useEffect(() => {
+    const t = setInterval(() => document.visibilityState === "visible" && router.refresh(), seconds * 1000);
+    return () => clearInterval(t);
+  }, [router, seconds]);
+  return <p className="text-xs text-ink-3">Auto-refreshes every {seconds}s</p>;
 }
 
 /** Small button for free restores (final cut / shot asset). */
