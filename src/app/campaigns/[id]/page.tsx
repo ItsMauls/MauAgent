@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { presignGet } from "@/lib/s3";
 import { campaignSpent } from "@/lib/cost";
 import { DecisionButtons } from "../../ui";
-import { AssetsTab, Empty, ShotsTab } from "./shots";
+import { AssetsTab, ChangedKeys, Empty, ShotsTab } from "./shots";
 import { SourcePill, StatusPill } from "../../pills";
 
 export const dynamic = "force-dynamic";
@@ -212,13 +212,6 @@ function ArtifactsTab({ campaignId, artifacts, sp }: { campaignId: string; artif
       )}
     </div>
   );
-}
-
-/** Top-level keys whose value differs between two versions (cheap, readable diff). */
-function ChangedKeys({ a, b }: { a: unknown; b: unknown }) {
-  const o1 = (a ?? {}) as Record<string, unknown>, o2 = (b ?? {}) as Record<string, unknown>;
-  const keys = [...new Set([...Object.keys(o1), ...Object.keys(o2)])].filter((k) => JSON.stringify(o1[k]) !== JSON.stringify(o2[k]));
-  return <p className="mt-3 text-sm text-ink-2">Changed fields: {keys.length ? keys.join(", ") : "none"}</p>;
 }
 
 function DecisionsTab({ decisions }: { decisions: { id: string; type: string; notes: string | null; targetAgent: string | null; shotIds: string[]; createdAt: Date }[] }) {

@@ -103,3 +103,11 @@ export function AssetsTab({ shots }: { shots: ShotRow[] }) {
   );
 }
 
+
+/** Top-level keys whose value differs between two versions (cheap, readable diff). */
+export function ChangedKeys({ a, b }: { a: unknown; b: unknown }) {
+  const o1 = (a ?? {}) as Record<string, unknown>, o2 = (b ?? {}) as Record<string, unknown>;
+  const keys = [...new Set([...Object.keys(o1), ...Object.keys(o2)])].filter((k) => JSON.stringify(o1[k]) !== JSON.stringify(o2[k]));
+  return <p className="mt-3 text-sm text-ink-2">Changed fields: {keys.length ? keys.join(", ") : "none"}</p>;
+}
+

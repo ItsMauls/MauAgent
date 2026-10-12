@@ -149,9 +149,12 @@ model Step {
 }
 
 model Artifact {
-  id         String   @id @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  id          String     @id @default(cuid())
+  // Null for the output of a direct task (Boards workspace) that has not been sent to a campaign.
+  campaignId  String?
+  campaign    Campaign?  @relation(fields: [campaignId], references: [id])
+  // Direct task that produced it (or, on a campaign copy, the task it was seeded from).
+  agentTaskId String?
   agentRole  String
   version    Int
   payload    Json
@@ -161,6 +164,7 @@ model Artifact {
 
   @@unique([campaignId, agentRole, version])
   @@index([agentRole, createdAt])
+  @@index([agentTaskId])
 }
 
 model Shot {
@@ -354,4 +358,35 @@ model PriceBook {
   effectiveFrom DateTime @default(now())
 
   @@unique([provider, model, effectiveFrom])
+}
+
+enum TaskStatus {
+  QUEUED
+  RUNNING
+  WAITING
+  DONE
+  FAILED
+}
+
+// A direct task from a Boards workspace: one agent runs alone, outside the campaign pipeline.
+model AgentTask {
+  id               String     @id @default(cuid())
+  agentRole        String
+  input            Json
+  status           TaskStatus @default(QUEUED)
+  // Retry = attempt + 1; the Inngest event id is taskId:attempt.
+  attempt          Int        @default(1)
+  artifactId       String?    @unique
+  // Campaign created by "Send to flow".
+  campaignId       String?
+  // Hand-off between agents (e.g. Content Creator asks the Talent Manager).
+  requestedByRole  String?
+  estUsd           Decimal    @default(0) @db.Decimal(10, 4)
+  costUsd          Decimal    @default(0) @db.Decimal(10, 4)
+  confirmedOverCap Boolean    @default(false)
+  error            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([agentRole, status])
 }

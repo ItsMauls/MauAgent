@@ -16,12 +16,12 @@ import {
 import { getPersona, isAgentRole, personaSystem, SYSTEM_ID } from "./persona";
 import { recallMemory, type MemoryCtx } from "./memory";
 
-function modelFor(role: string) {
+export function modelFor(role: string) {
   return process.env[`AGENT_MODEL_${role.toUpperCase()}`] ?? process.env.AGENT_MODEL_DEFAULT ?? "gemini-2.5-flash";
 }
 
 /** LLM cost from PriceBook (unit: "1M_input_tokens" / "1M_output_tokens"). No price = 0. */
-async function llmCost(model: string, inTok = 0, outTok = 0) {
+export async function llmCost(model: string, inTok = 0, outTok = 0) {
   const rows = await db.priceBook.findMany({
     where: { provider: "google", model, effectiveFrom: { lte: new Date() } },
     orderBy: { effectiveFrom: "desc" },

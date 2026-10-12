@@ -2,14 +2,15 @@ import type { CampaignStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { DEFAULT_PERSONAS, isAgentRole } from "@/lib/agents/persona";
 import { Persona } from "@/lib/agents/schemas";
-import { ROLES } from "./roles";
+import { ROLES, roleByAgent } from "./roles";
+import { taskTitle } from "./tasks";
 import { GATE_OWNER, roleWork, type Snapshot } from "./status";
 
 const product = (brief: unknown, id: string) => (brief as { product?: string }).product ?? id;
 
 /** One read of everything the status derivation needs (3 small queries). Shared by the sidebar and Boards. */
 export async function boardSnapshot(): Promise<Snapshot> {
-  const [steps, gated, generating] = await Promise.all([
+  const [steps, gated, generating, tasks] = await Promise.all([
     db.step.findMany({
       where: { status: "running", run: { status: "running" } },
       select: { agentRole: true, startedAt: true, run: { select: { campaignId: true, campaign: { select: { clientBrief: true } } } } },
@@ -26,6 +27,7 @@ export async function boardSnapshot(): Promise<Snapshot> {
       where: { status: { in: ["DRAFTING", "REGENERATING"] }, runs: { some: { status: "running" } }, shots: { some: { source: "seedance_api", status: "pending" } } },
       select: { id: true, clientBrief: true, runs: { where: { status: "running" }, take: 1, select: { startedAt: true } } },
     }),
+    db.agentTask.findMany({ where: { status: { in: ["QUEUED", "RUNNING", "WAITING"] } }, select: { id: true, agentRole: true, status: true, input: true, createdAt: true } }),
   ]);
   return {
     running: [
@@ -33,7 +35,7 @@ export async function boardSnapshot(): Promise<Snapshot> {
       ...generating.map((c) => ({ agentRole: "videographer", campaignId: c.id, product: product(c.clientBrief, c.id), startedAt: c.runs[0]?.startedAt ?? new Date() })),
     ],
     waiting: gated.map((c) => ({ campaignId: c.id, product: product(c.clientBrief, c.id), status: c.status, since: c.runs[0]?.steps[0]?.endedAt ?? c.createdAt })),
-    tasks: [], // AgentTask rows join here once direct tasks exist.
+    tasks: tasks.map((t) => ({ ...t, title: taskTitle(t.input), roleSlug: roleByAgent(t.agentRole)?.slug ?? "" })),
   };
 }
 

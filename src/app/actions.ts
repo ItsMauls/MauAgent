@@ -11,9 +11,10 @@ import { presignPut } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
 import { campaignSpent, estimateRegenerate, videoPricePerSec } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
+import { getSettings as loadSettings } from "@/lib/settings";
 
 export async function getSettings() {
-  return db.setting.upsert({ where: { id: "default" }, create: {}, update: {} });
+  return loadSettings();
 }
 
 export async function saveSettings(form: FormData) {
