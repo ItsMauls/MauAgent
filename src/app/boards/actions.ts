@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { inngest } from "@/lib/inngest";
 import { getSettings } from "@/lib/settings";
 import { ClientBrief } from "@/lib/agents/schemas";
-import { roleBySlug } from "@/lib/boards/roles";
+import { ROLES, roleBySlug } from "@/lib/boards/roles";
+import { writeFeedback } from "@/lib/boards/feedback";
 import { estimateTask, refIds, taskGate, TASKS } from "@/lib/boards/tasks";
 import { saveTaskResult } from "@/lib/workflows/agentTask";
 
@@ -155,4 +156,20 @@ export async function setTalentLock(form: FormData) {
     for (const t of open) await saveTaskResult(t.id, "talentManager", { creativeAssetId: a.id, name: a.name, description: a.description, imageUrls: a.imageUrls }, 0);
   }
   revalidatePath("/boards", "layout");
+}
+
+// ---------- Feedback ----------
+
+/** Owner feedback (thumbs + comment) aimed at one agent, from Boards or the campaign page. */
+export async function addFeedback(form: FormData) {
+  const f = z.object({
+    agentRole: z.string().refine((r) => ROLES.some((x) => x.agentRole === r), "Unknown agent"),
+    campaignId: z.string().min(1).optional(),
+    sentiment: z.enum(["positive", "neutral", "negative"]),
+    text: z.string().trim().min(1).max(500),
+  }).parse({
+    agentRole: form.get("agentRole"), campaignId: form.get("campaignId") || undefined, sentiment: form.get("sentiment"), text: form.get("text"),
+  });
+  await writeFeedback({ ...f, source: "owner_note" });
+  revalidatePath("/", "layout");
 }

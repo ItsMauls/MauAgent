@@ -8,6 +8,7 @@ import { CreativeBrief } from "@/lib/agents/schemas";
 import { formatDuration } from "@/lib/status";
 import { StatusPill } from "../pills";
 import { CardError, initials, load, STATE_PILL } from "./cards";
+import { FeedbackForm } from "./feedback";
 
 const product = (b: unknown, id: string) => (b as { product?: string }).product ?? id;
 const DELIVERED = ["APPROVED", "PUBLISHED"] as const;
@@ -16,7 +17,7 @@ const DELIVERED = ["APPROVED", "PUBLISHED"] as const;
 
 export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<string, string | undefined>) => string }) {
   const r = await load(async () => {
-    const [snap, names, exp, delivered, handoffs] = await Promise.all([
+    const [snap, names, exp, delivered, handoffs, feedback] = await Promise.all([
       boardSnapshot(),
       agentNames(),
       agentExperience(),
@@ -37,6 +38,7 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
         orderBy: { updatedAt: "desc" },
         select: { id: true, agentRole: true, requestedByRole: true, artifactId: true },
       }),
+      db.agentFeedback.findMany({ orderBy: { createdAt: "desc" }, distinct: ["agentRole"], select: { agentRole: true, text: true, sentiment: true } }),
     ]);
     const results = await db.artifact.findMany({ where: { id: { in: handoffs.flatMap((h) => h.artifactId ?? []) } }, select: { id: true, payload: true } });
     return ROLES.map((role) => {
@@ -50,6 +52,7 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
       }));
       return {
         role, work, done, name: names[role.agentRole],
+        feedback: feedback.find((f) => f.agentRole === role.agentRole),
         level: (exp as Record<string, { level: string }>)[role.agentRole]?.level,
         last: last && {
           id: last.id,
@@ -70,7 +73,7 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
         </p>
       </div>
       <ul className="-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-2">
-        {r.data.map(({ role, work, done, name, level, last }) => {
+        {r.data.map(({ role, work, done, name, level, last, feedback }) => {
           const [label, cls] = STATE_PILL[work.state];
           return (
             <li key={role.slug} className="w-72 shrink-0 snap-start space-y-3 rounded-3xl border border-line bg-canvas p-4">
@@ -117,6 +120,25 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
                 ) : (
                   <p className="text-sm text-ink-3">No delivered campaign yet.</p>
                 )}
+              </div>
+
+              <div>
+                <p className="label !mb-1">Latest feedback</p>
+                {feedback ? (
+                  <p className="text-sm">
+                    <span aria-label={feedback.sentiment} className={`material-symbols-outlined !text-[14px] align-[-2px] ${feedback.sentiment === "positive" ? "text-emerald-700" : feedback.sentiment === "negative" ? "text-red-700" : "text-ink-2"}`}>
+                      {feedback.sentiment === "positive" ? "thumb_up" : feedback.sentiment === "negative" ? "thumb_down" : "remove"}
+                    </span>{" "}
+                    <q className="italic text-ink-2">{feedback.text.length > 90 ? `${feedback.text.slice(0, 89)}…` : feedback.text}</q>{" "}
+                    <Link href={`/boards/${role.slug}?tab=results`} className="whitespace-nowrap text-xs font-semibold text-brand">See all</Link>
+                  </p>
+                ) : (
+                  <p className="text-sm text-ink-3">None yet.</p>
+                )}
+                <details className="mt-1">
+                  <summary className="cursor-pointer text-xs font-semibold text-brand">Give feedback</summary>
+                  <div className="mt-2"><FeedbackForm agentRole={role.agentRole} compact /></div>
+                </details>
               </div>
 
               <Link

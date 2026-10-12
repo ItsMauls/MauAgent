@@ -27,6 +27,7 @@ import { uploadFromUrl } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
 import { budgetGate, campaignSpent, latestPrice, monthSpent } from "@/lib/cost";
 import { allowedFrom } from "@/lib/status";
+import { decisionFeedback, qcFeedback, writeFeedback } from "@/lib/boards/feedback";
 import { NonRetriableError } from "inngest";
 import type { CampaignStatus, Prisma } from "@prisma/client";
 
@@ -38,6 +39,20 @@ async function setStatus(id: string, status: CampaignStatus, extra: Prisma.Campa
     throw new NonRetriableError(`Invalid status transition ${c.status} → ${status}`);
   }
 }
+
+/** Feedback is a side record: a failure is logged and never fails the campaign. */
+async function safeFeedback(fn: () => Promise<unknown>) {
+  try {
+    await fn();
+  } catch (e) {
+    console.error("[feedback]", e);
+  }
+}
+
+const routedFeedback = async (row: Parameters<typeof decisionFeedback>[0]) => {
+  const f = decisionFeedback(row);
+  if (f) await writeFeedback(f);
+};
 
 /** Record a Step in the DB (for the Pipeline dashboard) around the work of a step. */
 async function tracked<T>(runId: string, agentRole: string, attempt: number, fn: () => Promise<T>): Promise<T> {
@@ -248,7 +263,8 @@ export const campaignPipeline = inngest.createFunction(
       await step.run("accountTeam", () =>
         tracked(runId, "accountTeam", attempt, async () => {
           const { payload, costUsd } = await accountTeam(brief, creative, visual, mem);
-          await saveArtifact(campaignId, "accountTeam", payload, costUsd, runId);
+          const art = await saveArtifact(campaignId, "accountTeam", payload, costUsd, runId);
+          await safeFeedback(() => writeFeedback(qcFeedback(campaignId, art.id, payload)));
           const pkg = { ...payload, costSoFar: await campaignSpent(campaignId) };
           await setStatus(campaignId, "AWAITING_APPROVAL", { approvalPackage: pkg });
         }),
@@ -273,7 +289,10 @@ export const campaignPipeline = inngest.createFunction(
           return payload.target;
         }));
         await step.run("revise", async () => {
-          if (d.decisionId) await db.decision.update({ where: { id: d.decisionId }, data: { targetAgent: target } });
+          if (d.decisionId) {
+            const row = await db.decision.update({ where: { id: d.decisionId }, data: { targetAgent: target } });
+            await safeFeedback(() => routedFeedback(row));
+          }
           await setStatus(campaignId, "REVISING");
           await db.run.update({ where: { id: runId }, data: { status: "superseded", endedAt: new Date() } });
         });
@@ -285,6 +304,10 @@ export const campaignPipeline = inngest.createFunction(
       }
       if (d?.type === "regenerate") {
         await step.run("regenerate", async () => {
+          if (d.decisionId) {
+            const row = await db.decision.findUnique({ where: { id: d.decisionId } });
+            if (row) await safeFeedback(() => routedFeedback(row));
+          }
           await setStatus(campaignId, "REGENERATING");
           await db.run.update({ where: { id: runId }, data: { status: "superseded", endedAt: new Date() } });
         });
