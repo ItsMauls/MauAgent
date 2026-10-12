@@ -3,6 +3,8 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import { NavLinks } from "./nav";
+import { db } from "@/lib/db";
+import { QUEUE_STATUSES } from "./pills";
 
 const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
@@ -11,7 +13,8 @@ export const metadata: Metadata = {
   description: "Multi-agent AI creative agency",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const approvalCount = await db.campaign.count({ where: { status: { in: [...QUEUE_STATUSES] } } });
   return (
     <html lang="en">
       <head>
@@ -26,7 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <span className="text-lg font-bold tracking-tight">MauAgent</span>
               <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand">AI OS</span>
             </Link>
-            <NavLinks />
+            <NavLinks approvalCount={approvalCount} />
           </div>
           <a href="/auth/logout" className="flex items-center gap-3 rounded-full px-4 py-2 text-sm font-semibold text-bad transition hover:bg-bad-soft">
             <span className="material-symbols-outlined">logout</span>Log out

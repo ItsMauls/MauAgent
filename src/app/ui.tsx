@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { confirmUpload, decide, getUploadUrl } from "./actions";
+import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl } from "./actions";
 
 export function SourceToggle({ name, defaultValue }: { name: string; defaultValue: string }) {
   return (
@@ -71,21 +71,189 @@ export function UploadSlot({ shotDbId }: { shotDbId: string }) {
   );
 }
 
-export function DecisionButtons({ campaignId }: { campaignId: string }) {
+/** Run a server action with pending + error state. */
+function useAction() {
   const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const run = (fn: () => Promise<unknown>, after?: () => void) =>
+    start(async () => {
+      setError(null);
+      try {
+        await fn();
+        after?.();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    });
+  return { pending, error, run };
+}
+
+const ErrorText = ({ error }: { error: string | null }) =>
+  error ? <p role="alert" className="mt-2 text-sm font-medium text-red-700">{error}</p> : null;
+
+type Mode = null | "revise" | "regenerate";
+type Estimate = Awaited<ReturnType<typeof getRegenerateEstimate>>;
+
+/** Approve / Revise / Regenerate / Reject. Every action creates a Decision and sends campaign/client.decision. */
+export function DecisionButtons({ campaignId, shots }: { campaignId: string; shots: { shotId: string; source: string }[] }) {
+  const { pending, error, run } = useAction();
+  const [mode, setMode] = useState<Mode>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [est, setEst] = useState<Estimate | null>(null);
+  const [confirmOver, setConfirmOver] = useState(false);
+
+  const toggleShot = (id: string) => {
+    const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
+    setPicked(next);
+    setEst(null);
+    setConfirmOver(false);
+    if (next.length) run(async () => setEst(await getRegenerateEstimate(campaignId, next)));
+  };
+
   return (
-    <div className="flex gap-3">
-      <button disabled={pending} onClick={() => start(() => decide(campaignId, "approve"))} className="btn bg-ok text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)] hover:bg-emerald-600">
-        <span className="material-symbols-outlined">check</span>Approve
-      </button>
-      <button
-        disabled={pending}
-        onClick={() => confirm("Reject this campaign?") && start(() => decide(campaignId, "reject"))}
-        className="btn border border-red-200 bg-bad-soft text-red-800 hover:bg-red-100"
-      >
-        <span className="material-symbols-outlined">close</span>Reject
-      </button>
+    <div>
+      <div className="flex flex-wrap gap-3">
+        <button disabled={pending} onClick={() => run(() => decide(campaignId, { type: "approve" }))} className="btn bg-ok text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)] hover:bg-emerald-600">
+          <span className="material-symbols-outlined">check</span>Approve
+        </button>
+        <button disabled={pending} aria-expanded={mode === "revise"} onClick={() => setMode(mode === "revise" ? null : "revise")} className="btn-soft">
+          <span className="material-symbols-outlined">edit_note</span>Revise
+        </button>
+        <button disabled={pending} aria-expanded={mode === "regenerate"} onClick={() => setMode(mode === "regenerate" ? null : "regenerate")} className="btn border border-violet-200 bg-agent-soft text-violet-700 hover:bg-violet-100">
+          <span className="material-symbols-outlined">autorenew</span>Regenerate
+        </button>
+        <button
+          disabled={pending}
+          onClick={() => confirm("Reject this campaign?") && run(() => decide(campaignId, { type: "reject" }))}
+          className="btn border border-red-200 bg-bad-soft text-red-800 hover:bg-red-100"
+        >
+          <span className="material-symbols-outlined">close</span>Reject
+        </button>
+      </div>
+
+      {mode === "revise" && (
+        <form
+          className="mt-4 space-y-3 rounded-2xl bg-canvas p-4"
+          action={(f) =>
+            run(() =>
+              decide(campaignId, {
+                type: "revise",
+                notes: String(f.get("notes") ?? ""),
+                targetAgent: (f.get("targetAgent") || undefined) as "creativeDirector" | "artDirector" | "postProduction" | undefined,
+              }),
+            )
+          }
+        >
+          <label className="block">
+            <span className="label">Revision notes</span>
+            <textarea name="notes" required rows={3} className="input" placeholder="e.g. make the hook punchier in the first 2 seconds" />
+          </label>
+          <label className="block">
+            <span className="label">Route to</span>
+            <select name="targetAgent" className="input" defaultValue="">
+              <option value="">Automatic (classified from the notes)</option>
+              <option value="creativeDirector">Concept → Creative Director</option>
+              <option value="artDirector">Visuals → Art Director</option>
+              <option value="postProduction">Edit / pacing / subtitles → Post-production</option>
+            </select>
+          </label>
+          <button disabled={pending} className="btn-primary">Send revision</button>
+        </form>
+      )}
+
+      {mode === "regenerate" && (
+        <div className="mt-4 space-y-3 rounded-2xl bg-canvas p-4">
+          <fieldset>
+            <legend className="label">Shots to regenerate</legend>
+            <div className="flex flex-wrap gap-2">
+              {shots.map((s) => (
+                <label key={s.shotId} className="cursor-pointer">
+                  <input type="checkbox" checked={picked.includes(s.shotId)} onChange={() => toggleShot(s.shotId)} className="peer sr-only" />
+                  <span className="pill border-line bg-white px-4 py-2 text-ink-2 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand">
+                    {s.shotId} · {s.source === "seedance_api" ? "API" : "manual"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {est && (
+            <p role="status" className={`rounded-xl p-3 text-sm ${est.overCap ? "bg-bad-soft text-red-800" : "bg-white text-ink"}`}>
+              Regenerate {est.n} shot{est.n === 1 ? "" : "s"} × {est.model} × {est.seconds}s ≈ <b>US${est.addUsd.toFixed(2)}</b>; campaign total becomes{" "}
+              <b>US${est.totalUsd.toFixed(2)}</b> of cap US${est.capUsd.toFixed(2)}.
+              {est.seconds === 0 && " Manual shots cost no API dollars; they reopen the upload slot."}
+            </p>
+          )}
+          {est?.overCap && (
+            <label className="flex items-center gap-2 text-sm font-medium text-red-800">
+              <input type="checkbox" checked={confirmOver} onChange={(e) => setConfirmOver(e.target.checked)} />
+              I understand this exceeds the campaign budget cap.
+            </label>
+          )}
+          <button
+            disabled={pending || !est || (est.overCap && !confirmOver)}
+            onClick={() => run(() => decide(campaignId, { type: "regenerate", shotIds: picked, confirmOverCap: confirmOver }))}
+            className="btn-primary"
+          >
+            Regenerate {picked.length || ""} shot{picked.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      )}
+      {pending && <p className="mt-2 text-sm text-ink-2">Working…</p>}
+      <ErrorText error={error} />
     </div>
+  );
+}
+
+export type GateInfo = { estUsd: number; spentUsd: number; capUsd: number; monthSpentUsd: number; monthCapUsd: number; reasons: string[] };
+
+/** Budget gate dialog: shown while the Producer estimate exceeds a cap. */
+export function BudgetGatePanel({ campaignId, gate }: { campaignId: string; gate: GateInfo }) {
+  const { pending, error, run } = useAction();
+  const [cap, setCap] = useState(String(Math.ceil(gate.spentUsd + gate.estUsd)));
+  const row = (k: string, v: number) => (
+    <div className="flex justify-between"><dt className="text-ink-2">{k}</dt><dd className="font-semibold">US${v.toFixed(2)}</dd></div>
+  );
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-soft/60 p-4 text-sm">
+      <p className="font-semibold text-amber-900">Budget gate: production estimate exceeds a cap</p>
+      <ul className="mt-1 list-disc pl-5 text-amber-900">{gate.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+      <dl className="mt-3 space-y-1">
+        {row("Production estimate", gate.estUsd)}
+        {row("Spent so far", gate.spentUsd)}
+        {row("Campaign cap", gate.capUsd)}
+        {row("Spent this month", gate.monthSpentUsd)}
+        {row("Monthly cap", gate.monthCapUsd)}
+      </dl>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <button disabled={pending} onClick={() => confirm("Proceed over the cap?") && run(() => budgetDecision(campaignId, { action: "proceed" }))} className="btn-primary">
+          Proceed anyway
+        </button>
+        <label className="block">
+          <span className="label">New campaign cap (USD)</span>
+          <input type="number" min="0.01" step="0.01" value={cap} onChange={(e) => setCap(e.target.value)} className="input w-36" />
+        </label>
+        <button disabled={pending || !(Number(cap) > 0)} onClick={() => run(() => budgetDecision(campaignId, { action: "raiseCap", newCapUsd: Number(cap) }))} className="btn-soft">
+          Change cap &amp; proceed
+        </button>
+        <button disabled={pending} onClick={() => confirm("Cancel this campaign?") && run(() => budgetDecision(campaignId, { action: "cancel" }))} className="btn border border-red-200 bg-bad-soft text-red-800 hover:bg-red-100">
+          Cancel campaign
+        </button>
+      </div>
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
+/** Small button for free restores (final cut / shot asset). */
+export function RestoreButton({ label, action }: { label: string; action: () => Promise<unknown> }) {
+  const { pending, error, run } = useAction();
+  return (
+    <span>
+      <button disabled={pending} onClick={() => run(action)} className="pill border-blue-100 bg-brand-soft text-brand hover:bg-blue-100">
+        <span className="material-symbols-outlined !text-[14px]">history</span>{pending ? "Restoring…" : label}
+      </button>
+      <ErrorText error={error} />
+    </span>
   );
 }
 

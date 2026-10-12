@@ -9,6 +9,7 @@ datasource db {
 
 enum CampaignStatus {
   DRAFTING
+  AWAITING_BUDGET
   AWAITING_VIDEO_UPLOAD
   POST_PRODUCTION
   AWAITING_APPROVAL
@@ -73,7 +74,9 @@ model Campaign {
   budgetCapUsd  Decimal        @db.Decimal(10, 2)
   defaultSource VideoSource
   finalCutKey   String?
-  createdAt     DateTime       @default(now())
+  // Latest Account Team QC output (history lives in Artifact "accountTeam").
+  approvalPackage Json?
+  createdAt    DateTime       @default(now())
   runs          Run[]
   artifacts     Artifact[]
   shots         Shot[]
