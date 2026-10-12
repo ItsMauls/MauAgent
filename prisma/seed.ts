@@ -9,14 +9,16 @@ const rows = [
   // Seedance: USD per second of video. model = SEEDANCE_MODEL_DRAFT / _FINAL di .env.
   { provider: "byteplus", model: process.env.SEEDANCE_MODEL_DRAFT || "seedance-draft", unit: "second", unitPrice: 0 },
   { provider: "byteplus", model: process.env.SEEDANCE_MODEL_FINAL || "seedance-final", unit: "second", unitPrice: 0 },
-  { provider: "google", model: "gemini-2.5-flash", unit: "1M_input_tokens", unitPrice: 0 },
-  { provider: "google", model: "gemini-2.5-flash", unit: "1M_output_tokens", unitPrice: 0 },
+  // LLM prices are not kept here: OpenRouter returns the real cost per call (usage.cost) and /models has the price list.
+  // Apify TikTok Trends actor (pay per event, FREE tier, read from the actor's pricingInfos on 12 Oct 2026).
+  { provider: "apify", model: "tiktok-trends", unit: "actor_start", unitPrice: 0.025 },
+  { provider: "apify", model: "tiktok-trends", unit: "item", unitPrice: 0.0015 },
 ];
 
 async function main() {
   for (const r of rows)
     await db.priceBook.upsert({
-      where: { provider_model_effectiveFrom: { provider: r.provider, model: r.model, effectiveFrom } },
+      where: { provider_model_unit_effectiveFrom: { provider: r.provider, model: r.model, unit: r.unit, effectiveFrom } },
       create: { ...r, effectiveFrom },
       update: {},
     });

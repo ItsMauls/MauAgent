@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ACCOUNT_PUBLIC_SELECT, tokenStatus } from "@/lib/accounts";
 import * as instagram from "@/lib/providers/instagram";
 import * as tiktok from "@/lib/providers/tiktok";
-import { AccountControls } from "../ui";
+import { AccountControls, SyncBufferButton } from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,7 @@ const FILTERS = {
 type Filter = keyof typeof FILTERS;
 
 const PLATFORM = {
+  threads: { label: "Threads", configured: false, env: "Buffer" },
   instagram: { label: "Instagram", configured: instagram.configured(), env: "IG_APP_ID and IG_APP_SECRET" },
   tiktok: { label: "TikTok", configured: tiktok.configured(), env: "TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET" },
 };
@@ -26,7 +27,7 @@ const TOKEN_PILL = {
   reauth: ["Reconnect needed", "border-red-200 bg-bad-soft text-red-800"],
 } as const;
 
-const PUBLISHER_LABEL = { instagram_graph: "Instagram Graph", tiktok_inbox: "TikTok inbox", orshot: "Orshot" };
+const PUBLISHER_LABEL = { instagram_graph: "Instagram Graph", tiktok_inbox: "TikTok inbox", orshot: "Orshot", buffer: "Buffer" };
 const AUDIT_LABEL: Record<string, string> = { not_submitted: "Audit not submitted", pending: "Audit pending", approved: "Audit approved", rejected: "Audit rejected" };
 
 const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
@@ -54,10 +55,12 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Accounts</h1>
-          <p className="mt-2 text-ink-2">Connected Instagram and TikTok accounts: tokens, publisher, quota and scheduled posts.</p>
+          <p className="mt-2 text-ink-2">Instagram, TikTok and Threads accounts linked through Buffer (Sync from Buffer), plus direct connections: publisher, quota and scheduled posts.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(PLATFORM) as (keyof typeof PLATFORM)[]).map((p) =>
+        <div className="flex flex-wrap items-start gap-2">
+          <SyncBufferButton />
+          <a href="https://publish.buffer.com" target="_blank" rel="noreferrer" className="btn-soft"><span className="material-symbols-outlined">open_in_new</span>Add or manage channels in Buffer</a>
+          {(["instagram", "tiktok"] as const).map((p) =>
             PLATFORM[p].configured ? (
               <a key={p} href={`/api/oauth/${p}`} className="btn-primary">
                 <span className="material-symbols-outlined">add_link</span>Connect {PLATFORM[p].label}
@@ -109,7 +112,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
 
       {!accounts.length && (
         <div className="card p-12 text-center text-ink-2">
-          {filter === "active" ? "No connected accounts yet. Use Connect above to add Instagram or TikTok accounts." : "No accounts in this view."}
+          {filter === "active" ? "No accounts yet. Link them in Buffer, then use Sync from Buffer above." : "No accounts in this view."}
         </div>
       )}
 
@@ -122,14 +125,14 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                 <span className="text-lg font-bold">@{a.handle}</span>
                 <span className="pill border-line bg-white text-ink-2">{PLATFORM[a.platform].label}</span>
                 {a.accountType && <span className="pill border-line bg-white text-ink-2">{a.accountType.toLowerCase().replace("_", " ")}</span>}
-                <span className={`pill ${tokenCls}`}>{tokenLabel}</span>
+                {a.publisher !== "buffer" && <span className={`pill ${tokenCls}`}>{tokenLabel}</span>}
                 {!a.active && <span className="pill border-slate-200 bg-slate-50 text-slate-700">Inactive</span>}
               </div>
               <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 <div><dt className="text-ink-2">Publisher</dt><dd className="font-semibold">{PUBLISHER_LABEL[a.publisher]}</dd></div>
                 <div><dt className="text-ink-2">Brand</dt><dd className="font-semibold">{a.brandKit?.name ?? "—"}</dd></div>
                 <div><dt className="text-ink-2">Scheduled posts</dt><dd className="font-semibold">{a._count.publishJobs}</dd></div>
-                {a.platform === "instagram" ? (
+                {a.platform === "threads" || a.publisher === "buffer" ? null : a.platform === "instagram" ? (
                   <div>
                     <dt className="text-ink-2">Publishing quota (24 h)</dt>
                     <dd className="font-semibold">
@@ -140,7 +143,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                 ) : (
                   <div><dt className="text-ink-2">TikTok audit</dt><dd className="font-semibold">{AUDIT_LABEL[a.tiktokAuditStatus ?? "not_submitted"]}</dd></div>
                 )}
-                <div><dt className="text-ink-2">Token renewable until</dt><dd className="font-semibold">{fmtDate(a.refreshExpiresAt ?? a.tokenExpiresAt)}</dd></div>
+                {a.publisher !== "buffer" && <div><dt className="text-ink-2">Token renewable until</dt><dd className="font-semibold">{fmtDate(a.refreshExpiresAt ?? a.tokenExpiresAt)}</dd></div>}
                 <div><dt className="text-ink-2">Time zone</dt><dd className="font-semibold">{a.timezone}</dd></div>
                 <div><dt className="text-ink-2">Connected</dt><dd className="font-semibold">{fmtDate(a.createdAt)}</dd></div>
               </dl>

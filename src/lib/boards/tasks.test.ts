@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { budgetGate } from "../cost";
-import { refIds, taskFlow, TASKS, type FlowDeps, type StepLike } from "./tasks";
+import { refIds, storyboard, taskFlow, TASKS, type FlowDeps, type StepLike } from "./tasks";
 
 /** Inngest-like step: a finished step is memoized across re-executions; a failing step is retried up to 3 times. */
 function fakeStep(memo = new Map<string, unknown>()): StepLike & { memo: Map<string, unknown> } {
@@ -107,7 +107,7 @@ test("task inputs are validated and the form schema exposes artifact pickers", (
 });
 
 test("every role workspace with a task maps to the table's output; QC and post-production pick a campaign", () => {
-  assert.deepEqual(Object.keys(TASKS).sort(), ["accountManager", "accountTeam", "artDirector", "creativeDirector", "postProduction", "producer", "videographer"]);
+  assert.deepEqual(Object.keys(TASKS).sort(), ["accountManager", "accountTeam", "artDirector", "creativeDirector", "postProduction", "producer", "storyboardArtist", "videographer"]);
   for (const r of ["accountTeam", "postProduction"]) {
     const js = z.toJSONSchema(TASKS[r].input, { io: "input" }) as { properties: Record<string, { ref?: string }> };
     assert.equal(js.properties.campaignId.ref, "campaign");
@@ -115,4 +115,19 @@ test("every role workspace with a task maps to the table's output; QC and post-p
   }
   assert.equal(TASKS.accountTeam.llm, true);
   assert.equal(TASKS.postProduction.llm, false);
+});
+
+test("storyboard: one panel per shot with running timecodes", () => {
+  const shot = (shotId: string, durationSec: number) => ({ shotId, durationSec, cameraMove: "pan", subject: "s", setting: "r", lighting: "l", onScreenText: "", voLine: "" });
+  const sb = storyboard({ moodboardPrompts: [], palette: ["#fff"], typography: "", characterDescription: "Ana", shotList: [shot("shot01", 8), shot("shot02", 5)], styleRefImageUrls: [] });
+  assert.deepEqual(sb.panels.map((p) => [p.panel, p.startSec]), [[1, 0], [2, 8]]);
+  assert.equal(sb.totalSec, 13);
+});
+
+test("storyboard PDF: one page per panel, placeholder when an image is missing", async () => {
+  const shot = (shotId: string) => ({ shotId, durationSec: 5, cameraMove: "pan", subject: "s", setting: "r", lighting: "l", onScreenText: "Halo ✓", voLine: "" });
+  const { storyboardPdf } = await import("./storyboardPdf");
+  const bytes = await storyboardPdf(storyboard({ moodboardPrompts: [], palette: ["#fff"], typography: "", characterDescription: "Ana", shotList: [shot("shot01"), shot("shot02")], styleRefImageUrls: [] }), [null, null]);
+  assert.equal(Buffer.from(bytes.slice(0, 4)).toString(), "%PDF");
+  assert.equal((await (await import("pdf-lib")).PDFDocument.load(bytes)).getPageCount(), 2);
 });

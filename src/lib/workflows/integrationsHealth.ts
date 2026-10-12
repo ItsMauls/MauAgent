@@ -2,6 +2,9 @@ import { HeadBucketCommand } from "@aws-sdk/client-s3";
 import { inngest } from "@/lib/inngest";
 import { db } from "@/lib/db";
 import { s3 } from "@/lib/s3";
+import { aiEnv, apifyEnv } from "@/lib/ai/env";
+import { bufferChannels } from "@/lib/providers/buffer";
+import { syncBufferAccounts } from "@/lib/bufferAccounts";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
 
@@ -11,13 +14,25 @@ const CHECKS: Record<string, () => Promise<string>> = {
     await s3.send(new HeadBucketCommand({ Bucket: process.env.S3_BUCKET ?? "mauagent" }));
     return "Bucket reachable";
   },
-  gemini: async () => {
-    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    if (!key) throw new Error("No API key");
-    // Listing models is free. Key goes in a header so it can never end up in an error string.
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", { headers: { "x-goog-api-key": key } });
+  // Both checks are free and send the secret in a header only, so it can never end up in an error string.
+  openrouter: async () => {
+    const env = aiEnv();
+    const res = await fetch(`${env.AI_BASE_URL}/key`, { headers: { Authorization: `Bearer ${env.AI_API_KEY}` } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return "API key valid";
+    return `API key valid · model ${env.AI_MODEL}`;
+  },
+  apify: async () => {
+    const res = await fetch("https://api.apify.com/v2/users/me", { headers: { Authorization: `Bearer ${apifyEnv().APIFY_API_TOKEN}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return "API token valid";
+  },
+  buffer: async () => {
+    const wanted = ["instagram", "tiktok", "threads"];
+    await syncBufferAccounts(); // keeps channel state fresh daily
+    const have = new Set((await bufferChannels()).map((c) => c.service));
+    const missing = wanted.filter((s) => !have.has(s));
+    if (missing.length) throw new Error(`Connect in Buffer: ${missing.join(", ")}`);
+    return "API key valid · Instagram, TikTok, Threads channels";
   },
 };
 

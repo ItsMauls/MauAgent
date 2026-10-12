@@ -33,7 +33,7 @@ export default async function ApprovalPage() {
 
       {!campaigns.length && (
         <div className="card p-12 text-center text-ink-2">
-          Nothing is waiting for you. <Link href="/" className="font-semibold text-brand">Back to campaigns →</Link>
+          Nothing is waiting for you. <Link href="/campaigns" className="font-semibold text-brand">Back to campaigns →</Link>
         </div>
       )}
 

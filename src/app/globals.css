@@ -48,3 +48,14 @@ body {
   .label { @apply mb-1.5 block text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2; }
   .pill { @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold; }
 }
+
+/* Roles flow: dashed line whose dashes stream in the arrow direction. */
+.flow { background-color: transparent; }
+.flow-right, .flow-left { background-image: repeating-linear-gradient(90deg, #94a3b8 0 6px, transparent 6px 12px); background-size: 12px 2px; }
+.flow-down { background-image: repeating-linear-gradient(180deg, #94a3b8 0 6px, transparent 6px 12px); background-size: 2px 12px; }
+.flow-right { animation: flow-x 0.5s linear infinite; }
+.flow-left { animation: flow-x 0.5s linear infinite reverse; }
+.flow-down { animation: flow-y 0.5s linear infinite; }
+@keyframes flow-x { to { background-position-x: 12px; } }
+@keyframes flow-y { to { background-position-y: 12px; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; } }

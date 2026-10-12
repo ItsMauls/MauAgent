@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl, refreshAccounts, setAccountActive, updateAccount } from "./actions";
+import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl, planPublish, refreshAccounts, cancelPublish, setAccountActive, syncBuffer, updateAccount } from "./actions";
 
 export function SourceToggle({ name, defaultValue }: { name: string; defaultValue: string }) {
   return (
@@ -246,12 +246,13 @@ export function BudgetGatePanel({ campaignId, gate }: { campaignId: string; gate
 }
 
 /** Re-render the server page every `seconds` while the tab is visible (light polling, no websocket). */
-export function AutoRefresh({ seconds }: { seconds: number }) {
+export function AutoRefresh({ seconds, quiet = false }: { seconds: number; quiet?: boolean }) {
   const router = useRouter();
   useEffect(() => {
     const t = setInterval(() => document.visibilityState === "visible" && router.refresh(), seconds * 1000);
     return () => clearInterval(t);
   }, [router, seconds]);
+  if (quiet) return null;
   return <p className="text-xs text-ink-3">Auto-refreshes every {seconds}s</p>;
 }
 
@@ -275,8 +276,9 @@ export function RestoreButton({ label, action }: { label: string; action: () => 
 
 type AccountSettings = Parameters<typeof updateAccount>[1];
 const PUBLISHERS: Record<string, [string, string][]> = {
-  instagram: [["instagram_graph", "Instagram Graph API"], ["orshot", "Orshot"]],
-  tiktok: [["tiktok_inbox", "TikTok inbox (draft)"], ["orshot", "Orshot"]],
+  instagram: [["buffer", "Buffer"], ["instagram_graph", "Instagram Graph API"], ["orshot", "Orshot"]],
+  tiktok: [["buffer", "Buffer"], ["tiktok_inbox", "TikTok inbox (draft)"], ["orshot", "Orshot"]],
+  threads: [["buffer", "Buffer"]],
 };
 
 /** Per-account settings (publisher, brand, type, time zone, TikTok audit) plus check / deactivate. */
@@ -379,5 +381,106 @@ export function BudgetField({ label, name, defaultValue, max, step }: { label: s
       />
       <input name={name} type="number" step="0.01" min="0.01" value={value} onChange={(e) => setValue(e.target.value)} className="input" required />
     </label>
+  );
+}
+
+export function SyncBufferButton() {
+  const { pending, error, run } = useAction();
+  const router = useRouter();
+  const [note, setNote] = useState<string | null>(null);
+  return (
+    <div>
+      <button
+        disabled={pending}
+        onClick={() => run(async () => { const r = await syncBuffer(); setNote(`${r.linked} linked${r.deactivated ? `, ${r.deactivated} deactivated` : ""}.`); router.refresh(); })}
+        className="btn-primary"
+      >
+        <span className="material-symbols-outlined">sync</span>{pending ? "Syncing…" : "Sync from Buffer"}
+      </button>
+      {note && !pending && <p role="status" className="mt-1 text-sm text-emerald-700">{note}</p>}
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
+/** Content Creator: choose the accounts, then publish an approved campaign now or at a set time. */
+export function PublishForm({ campaigns, accounts }: {
+  campaigns: { id: string; label: string; caption: string }[];
+  accounts: { id: string; platform: string; handle: string }[];
+}) {
+  const { pending, error, run } = useAction();
+  const router = useRouter();
+  const [when, setWhen] = useState<"now" | "schedule">("now");
+  const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? "");
+  const [caption, setCaption] = useState(campaigns[0]?.caption ?? "");
+  return (
+    <form
+      className="grid gap-4 rounded-2xl bg-canvas p-5"
+      action={(f) =>
+        run(async () => {
+          const at = String(f.get("at") ?? "");
+          await planPublish({
+            campaignId, when, caption,
+            accountIds: f.getAll("account").map(String),
+            scheduledAt: when === "schedule" && at ? new Date(at).toISOString() : undefined, // datetime-local = browser time
+            hashtags: String(f.get("hashtags") ?? "").split(/[\s,]+/).filter(Boolean),
+          });
+          router.refresh();
+        })
+      }
+    >
+      <label className="block">
+        <span className="label">Approved campaign</span>
+        <select value={campaignId} onChange={(e) => { setCampaignId(e.target.value); setCaption(campaigns.find((c) => c.id === e.target.value)?.caption ?? ""); }} className="input">
+          {campaigns.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </label>
+      <fieldset>
+        <legend className="label">Post to</legend>
+        <div className="flex flex-wrap gap-2">
+          {accounts.map((a) => (
+            <label key={a.id} className="cursor-pointer">
+              <input type="checkbox" name="account" value={a.id} className="peer sr-only" />
+              <span className="pill border-line bg-white px-4 py-2 text-ink-2 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand">{a.platform} @{a.handle}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="label">When</legend>
+        <div className="flex flex-wrap items-center gap-2">
+          {([["now", "Publish automatically now"], ["schedule", "Schedule"]] as const).map(([v, t]) => (
+            <label key={v} className="cursor-pointer">
+              <input type="radio" checked={when === v} onChange={() => setWhen(v)} className="peer sr-only" />
+              <span className="pill border-line bg-white px-4 py-2 text-ink-2 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand">{t}</span>
+            </label>
+          ))}
+          {when === "schedule" && <input type="datetime-local" name="at" required className="input w-auto" />}
+        </div>
+      </fieldset>
+      <label className="block">
+        <span className="label">Caption</span>
+        <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} maxLength={2200} className="input" />
+      </label>
+      <label className="block">
+        <span className="label">Hashtags (space separated, no #)</span>
+        <input name="hashtags" className="input" />
+      </label>
+      <div>
+        <button disabled={pending || !campaignId} className="btn-primary">{pending ? "Queuing…" : when === "now" ? "Publish" : "Schedule"}</button>
+        <ErrorText error={error} />
+      </div>
+    </form>
+  );
+}
+
+export function CancelPublishButton({ jobId }: { jobId: string }) {
+  const { pending, error, run } = useAction();
+  const router = useRouter();
+  return (
+    <span>
+      <button disabled={pending} onClick={() => confirm("Cancel this post?") && run(() => cancelPublish(jobId), () => router.refresh())} className="font-semibold text-red-700">Cancel</button>
+      <ErrorText error={error} />
+    </span>
   );
 }
