@@ -2,7 +2,9 @@ import Link from "next/link";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
-import { likePattern } from "@/lib/boards/archive";
+import { likePattern, workedOn } from "@/lib/boards/archive";
+import { OUTCOME, outcomeLabel } from "@/lib/boards/outcome";
+import { FeedbackForm, FeedbackList } from "./feedback";
 import { roleByAgent, type BoardRole } from "@/lib/boards/roles";
 import { TASKS } from "@/lib/boards/tasks";
 import { taskTitle } from "@/lib/boards/status";
@@ -327,5 +329,49 @@ function HandoffList({ tasks }: { tasks: { id: string; status: string; requested
         ))}
       </ul>
     </details>
+  );
+}
+
+// ---------- Results & feedback ----------
+
+export async function ResultsPanel({ role }: { role: BoardRole }) {
+  const [campaigns, feedback] = await Promise.all([
+    db.campaign.findMany({
+      where: workedOn(role.agentRole), orderBy: { createdAt: "desc" }, take: 20,
+      select: { id: true, status: true, clientBrief: true, createdAt: true, decisions: { select: { type: true, targetAgent: true, notes: true } } },
+    }),
+    db.agentFeedback.findMany({ where: { agentRole: role.agentRole }, orderBy: { createdAt: "desc" }, take: 30 }),
+  ]);
+  const rows = campaigns.map((c) => ({ ...c, outcome: outcomeLabel(c.status, c.decisions, role.agentRole) }));
+  const counts = rows.reduce<Record<string, number>>((m, r) => ({ ...m, [r.outcome]: (m[r.outcome] ?? 0) + 1 }), {});
+  return (
+    <div className="grid gap-6 lg:grid-cols-12">
+      <section aria-labelledby="res-h" className="space-y-3 lg:col-span-6">
+        <h2 id="res-h" className="text-lg font-bold">Results</h2>
+        <p className="flex flex-wrap gap-2">
+          {(Object.keys(OUTCOME) as (keyof typeof OUTCOME)[]).filter((o) => counts[o]).map((o) => (
+            <span key={o} className={`pill ${OUTCOME[o][1]}`}>{OUTCOME[o][0]}: {counts[o]}</span>
+          ))}
+        </p>
+        {!rows.length ? (
+          <p className="rounded-2xl bg-canvas p-4 text-sm text-ink-2">No campaign work yet.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {rows.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                <Link href={`/campaigns/${c.id}`} className="font-semibold hover:underline">{product(c.clientBrief) ?? c.id}</Link>
+                <span className={`pill ${OUTCOME[c.outcome][1]}`}>{OUTCOME[c.outcome][0]}</span>
+                <span className="ml-auto text-xs text-ink-2">{when(c.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section aria-labelledby="fb-h" className="space-y-3 lg:col-span-6">
+        <h2 id="fb-h" className="text-lg font-bold">Feedback</h2>
+        <FeedbackForm agentRole={role.agentRole} />
+        <FeedbackList rows={feedback} />
+      </section>
+    </div>
   );
 }

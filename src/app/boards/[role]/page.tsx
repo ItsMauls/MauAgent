@@ -10,16 +10,17 @@ import { agentExperience } from "@/lib/agents/memory";
 import AccountsPage from "../../accounts/page";
 import { AssetsTab, Empty, ShotsTab } from "../../campaigns/[id]/shots";
 import { CreatorLibrary } from "../library";
-import { ArtifactsPanel, MemoryPanel, QuickTask, ReadyTalent, TalentRequests } from "../workspace";
+import { ArtifactsPanel, MemoryPanel, QuickTask, ReadyTalent, ResultsPanel, TalentRequests } from "../workspace";
 import { TASKS } from "@/lib/boards/tasks";
 import { initials, STATE_PILL } from "../cards";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "task" | "focus" | RoleTab | "artifacts" | "memory";
+type Tab = "task" | "focus" | RoleTab | "results" | "artifacts" | "memory";
 const TAB_LABEL: Record<Tab, string> = {
   task: "Quick task",
   focus: "Current focus",
+  results: "Results & feedback",
   artifacts: "Artifacts",
   memory: "Memory",
   accounts: "Accounts",
@@ -35,7 +36,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
   const role = roleBySlug(slug);
   if (!role) notFound();
   const llmRole = isAgentRole(role.agentRole);
-  const tabs: Tab[] = [...(TASKS[role.agentRole] ? (["task"] as const) : []), "focus", ...role.tabs, "artifacts", ...(llmRole ? (["memory"] as const) : [])];
+  const tabs: Tab[] = [...(TASKS[role.agentRole] ? (["task"] as const) : []), "focus", ...role.tabs, "results", "artifacts", ...(llmRole ? (["memory"] as const) : [])];
   const tab: Tab = tabs.includes(sp.tab as Tab) ? (sp.tab as Tab) : tabs[0];
 
   const [persona, exp, work] = await Promise.all([
@@ -90,6 +91,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
         {tab === "task" && <QuickTask role={role} taskId={sp.task} />}
         {tab === "artifacts" && <ArtifactsPanel role={role} q={sp.q?.trim() || undefined} a={sp.a} b={sp.b} />}
         {tab === "memory" && <MemoryPanel role={role} />}
+        {tab === "results" && <ResultsPanel role={role} />}
         {tab === "focus" &&
           (work.items.length ? (
             <ul className="space-y-2">

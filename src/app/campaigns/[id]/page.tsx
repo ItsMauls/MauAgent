@@ -5,6 +5,7 @@ import { presignGet } from "@/lib/s3";
 import { campaignSpent } from "@/lib/cost";
 import { DecisionButtons } from "../../ui";
 import { AssetsTab, ChangedKeys, Empty, ShotsTab } from "./shots";
+import { CampaignFeedback } from "../../boards/feedback";
 import { SourcePill, StatusPill } from "../../pills";
 
 export const dynamic = "force-dynamic";
@@ -125,7 +126,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
         {tab === "artifacts" && <ArtifactsTab campaignId={c.id} artifacts={c.artifacts} sp={sp} />}
         {tab === "shots" && <ShotsTab shots={c.shots} />}
         {tab === "assets" && <AssetsTab shots={c.shots} />}
-        {tab === "decisions" && <DecisionsTab decisions={c.decisions} />}
+        {tab === "decisions" && <><DecisionsTab decisions={c.decisions} /><CampaignFeedback campaignId={c.id} /></>}
         {tab === "publication" && (
           <Empty icon="share" text="Publishing to Instagram and TikTok is not built yet (PRD F11). Publish jobs, schedule, permalinks and Instagram quota will appear here." />
         )}

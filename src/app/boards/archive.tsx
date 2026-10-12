@@ -5,10 +5,11 @@ import { db } from "@/lib/db";
 import { presignGet } from "@/lib/s3";
 import { ROLES, roleByAgent } from "@/lib/boards/roles";
 import { agentNames } from "@/lib/boards/snapshot";
-import { ARCHIVE_TYPES, archiveSections, delta, likePattern, pageOf, PAGE_SIZE, type ArchiveType } from "@/lib/boards/archive";
+import { ARCHIVE_TYPES, archiveSections, delta, likePattern, pageOf, PAGE_SIZE, workedOn, type ArchiveType } from "@/lib/boards/archive";
 import { OUTCOME, outcomeLabel } from "@/lib/boards/outcome";
 import type { PromptPackage } from "@/lib/agents/schemas";
 import { load } from "./cards";
+import { FeedbackList } from "./feedback";
 
 type Qs = (p: Record<string, string | undefined>) => string;
 type Props = { q?: string; agent?: string; type?: string; sp: Record<string, string | undefined>; qs: Qs };
@@ -26,15 +27,12 @@ async function matchCampaignIds(q: string) {
   return rows.map((r) => r.id);
 }
 
-/** Campaigns an agent worked on: it has an artifact there (the videographer: the campaign has shots). */
-const workedOn = (agent: string): Prisma.CampaignWhereInput =>
-  agent === "videographer" ? { shots: { some: {} } } : { artifacts: { some: { agentRole: agent } } };
 
 export async function ArchiveCard({ q, agent, type, sp, qs }: Props) {
   const names = await agentNames().catch(() => ({}) as Record<string, string>);
   const sections = archiveSections(type, agent).filter((t) => !(q && t === "reports")); // reports are not searchable
   const SECTION: Record<ArchiveType, (p: SectionProps) => Promise<React.ReactNode>> = {
-    campaigns: Campaigns, reports: Reports, videos: Videos, talent: Talent, assets: Assets, prompts: Prompts, notes: Notes,
+    campaigns: Campaigns, reports: Reports, videos: Videos, talent: Talent, assets: Assets, prompts: Prompts, notes: Notes, feedback: Feedback,
   };
   const chip = (active: boolean) =>
     `rounded-full px-3 py-1 text-xs font-semibold transition ${active ? "bg-brand text-white" : "bg-canvas text-ink-2 hover:bg-brand-soft"}`;
@@ -376,3 +374,15 @@ async function Notes({ q, agent, page, qs }: SectionProps) {
   );
 }
 
+
+async function Feedback({ q, agent, page, qs }: SectionProps) {
+  const r = await load(async () => {
+    const where: Prisma.AgentFeedbackWhereInput = { ...(agent && { agentRole: agent }), ...(q && { text: { contains: q, mode: "insensitive" } }) };
+    return Promise.all([
+      db.agentFeedback.count({ where }),
+      db.agentFeedback.findMany({ where, orderBy: { createdAt: "desc" }, skip: page * PAGE_SIZE, take: PAGE_SIZE }),
+    ]);
+  });
+  if (!r.ok) return <SectionError type="feedback" />;
+  return <Section type="feedback" total={r.data[0]} page={page} qs={qs}><FeedbackList rows={r.data[1]} showAgent={!agent} /></Section>;
+}

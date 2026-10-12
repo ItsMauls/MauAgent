@@ -392,3 +392,33 @@ model AgentTask {
 
   @@index([agentRole, status])
 }
+
+enum FeedbackSource {
+  client_decision
+  qc
+  metrics
+  owner_note
+}
+
+enum Sentiment {
+  positive
+  neutral
+  negative
+}
+
+// Feedback aimed at one agent role: automatic (client decisions, QC) or written by the owner. Also episodic memory.
+model AgentFeedback {
+  id          String         @id @default(cuid())
+  agentRole   String
+  campaignId  String?
+  agentTaskId String?
+  source      FeedbackSource
+  sentiment   Sentiment
+  text        String
+  // decision:<id> / qc:<artifactId> — automatic feedback is written once per source event.
+  idemKey     String?        @unique
+  createdAt   DateTime       @default(now())
+
+  @@index([agentRole, createdAt])
+  @@index([campaignId])
+}

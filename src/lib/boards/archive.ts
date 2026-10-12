@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 // Boards archive: which sections a (type, agent) filter shows, plus small pure helpers. Search is Postgres ILIKE only.
 
 export const ARCHIVE_TYPES = {
@@ -8,6 +10,7 @@ export const ARCHIVE_TYPES = {
   assets: "Assets",
   prompts: "Prompt packages",
   notes: "Discussion notes",
+  feedback: "Feedback",
 } as const;
 export type ArchiveType = keyof typeof ARCHIVE_TYPES;
 export const PAGE_SIZE = 6;
@@ -20,6 +23,7 @@ const OWNERS: Record<ArchiveType, readonly string[] | "any"> = {
   campaigns: "any",
   reports: "any",
   notes: "any",
+  feedback: "any",
   videos: ["videographer", "postProduction"],
   talent: ["talentManager"],
   assets: ["videographer"], // the library lives in the Content Creator workspace
@@ -46,3 +50,7 @@ export function delta(cur: number, prev: number) {
   const pct = Math.round(((cur - prev) / prev) * 100);
   return { dir: pct > 0 ? ("up" as const) : pct < 0 ? ("down" as const) : ("flat" as const), pct };
 }
+
+/** Campaigns an agent worked on: it has an artifact there (the videographer: the campaign has shots). */
+export const workedOn = (agent: string): Prisma.CampaignWhereInput =>
+  agent === "videographer" ? { shots: { some: {} } } : { artifacts: { some: { agentRole: agent } } };

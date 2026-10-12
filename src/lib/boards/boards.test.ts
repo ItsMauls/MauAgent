@@ -5,6 +5,7 @@ import { addDays, agendaItems, countdown, dayKey, monthGrid } from "./agenda";
 import { roleWork, type Snapshot } from "./status";
 import { archiveSections, delta, likePattern, pageOf } from "./archive";
 import { outcomeLabel } from "./outcome";
+import { decisionFeedback, qcFeedback } from "./feedback";
 
 const at = (iso: string) => new Date(iso);
 
@@ -121,14 +122,14 @@ test("roleWork: one entry per campaign, busy wins", () => {
 // ---------- archive ----------
 
 test("archiveSections: agent AND type", () => {
-  assert.equal(archiveSections().length, 7);
+  assert.equal(archiveSections().length, 8);
   assert.deepEqual(archiveSections("videos"), ["videos"]);
   // Content Creator owns clips, the library and prompt packages; campaigns/reports/notes filter by role in the query.
-  assert.deepEqual(archiveSections(undefined, "videographer"), ["campaigns", "reports", "videos", "assets", "prompts", "notes"]);
-  assert.deepEqual(archiveSections(undefined, "creativeDirector"), ["campaigns", "reports", "notes"]);
+  assert.deepEqual(archiveSections(undefined, "videographer"), ["campaigns", "reports", "videos", "assets", "prompts", "notes", "feedback"]);
+  assert.deepEqual(archiveSections(undefined, "creativeDirector"), ["campaigns", "reports", "notes", "feedback"]);
   assert.deepEqual(archiveSections("talent", "talentManager"), ["talent"]);
   assert.deepEqual(archiveSections("talent", "creativeDirector"), []); // the combination has nothing
-  assert.deepEqual(archiveSections("bogus", "creativeDirector"), ["campaigns", "reports", "notes"]); // unknown type = all
+  assert.deepEqual(archiveSections("bogus", "creativeDirector"), ["campaigns", "reports", "notes", "feedback"]); // unknown type = all
 });
 
 test("likePattern escapes wildcards; delta compares periods", () => {
@@ -154,4 +155,31 @@ test("outcomeLabel: per campaign and per agent", () => {
   assert.equal(outcomeLabel("APPROVED", [revise("postProduction")], "postProduction"), "needs_revision");
   assert.equal(outcomeLabel("APPROVED", [revise("postProduction")], "creativeDirector"), "success");
   assert.equal(outcomeLabel("APPROVED", [{ type: "regenerate", targetAgent: null, notes: null }], "videographer"), "needs_revision");
+});
+
+// ---------- feedback ----------
+
+test("decisionFeedback: revision notes go to the routed agent, regenerate to the Content Creator", () => {
+  const base = { id: "d1", campaignId: "c1", notes: "Hook is too slow", shotIds: [] as string[] };
+  const cd = decisionFeedback({ ...base, type: "revise", targetAgent: "creativeDirector" });
+  assert.deepEqual([cd?.agentRole, cd?.source, cd?.sentiment, cd?.text, cd?.idemKey], ["creativeDirector", "client_decision", "negative", "Hook is too slow", "decision:d1"]);
+  assert.equal(decisionFeedback({ ...base, type: "revise", targetAgent: "postProduction" })?.agentRole, "postProduction");
+  const regen = decisionFeedback({ ...base, type: "regenerate", targetAgent: null, notes: null, shotIds: ["shot02"] });
+  assert.equal(regen?.agentRole, "videographer");
+  assert.match(regen!.text, /shot02/);
+  assert.equal(decisionFeedback({ ...base, type: "approve", targetAgent: null }), null);
+  assert.equal(decisionFeedback({ ...base, type: "reject", targetAgent: null }), null); // no target to route to
+  assert.equal(decisionFeedback({ ...base, type: "revise", targetAgent: null }), null); // not routed yet
+});
+
+test("qcFeedback: sentiment from score and flags, aimed at Post-production", () => {
+  const ok = (item: string) => ({ item, ok: true, note: "" });
+  assert.equal(qcFeedback("c1", "a1", { selfScore: 9, brandSafetyChecklist: [ok("claims")] }).sentiment, "positive");
+  assert.equal(qcFeedback("c1", "a1", { selfScore: 7, brandSafetyChecklist: [ok("claims")] }).sentiment, "neutral");
+  assert.equal(qcFeedback("c1", "a1", { selfScore: 5, brandSafetyChecklist: [] }).sentiment, "negative");
+  const flagged = qcFeedback("c1", "a1", { selfScore: 9, brandSafetyChecklist: [{ item: "AI label", ok: false, note: "missing" }] });
+  assert.equal(flagged.sentiment, "negative");
+  assert.match(flagged.text, /AI label \(missing\)/);
+  assert.equal(flagged.agentRole, "postProduction");
+  assert.equal(flagged.idemKey, "qc:a1");
 });
