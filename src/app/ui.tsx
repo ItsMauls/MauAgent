@@ -255,6 +255,11 @@ export function AutoRefresh({ seconds }: { seconds: number }) {
   return <p className="text-xs text-ink-3">Auto-refreshes every {seconds}s</p>;
 }
 
+/** A select that submits its GET form on change (filters without a separate Apply button). */
+export function AutoSubmitSelect(props: React.ComponentProps<"select">) {
+  return <select {...props} onChange={(e) => e.currentTarget.form?.requestSubmit()} />;
+}
+
 /** Small button for free restores (final cut / shot asset). */
 export function RestoreButton({ label, action }: { label: string; action: () => Promise<unknown> }) {
   const { pending, error, run } = useAction();

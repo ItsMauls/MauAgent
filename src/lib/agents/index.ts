@@ -73,14 +73,26 @@ Internal brief: ${JSON.stringify(internal)}`,
     mem,
   );
 
-export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string, mem?: MemoryCtx) =>
+type KitItem = { kind: string; name: string; description: string; imageUrls: string[] };
+
+/** Linked AI Content Creator items as hard constraints for the Art Director. Empty kit = no constraint. */
+export function creativeKitPrompt(kit: KitItem[]) {
+  if (!kit.length) return "";
+  const line = (a: KitItem) => `- [${a.kind}] ${a.name}: ${a.description}${a.imageUrls.length ? ` (refs: ${a.imageUrls.join(", ")})` : ""}`;
+  return `
+Creative kit (must use, do not invent replacements):
+${kit.map(line).join("\n")}
+Rules: build characterDescription from the kit characters word for word; set every shot's setting from the kit locations; if a style is given, start moodboardPrompts[0] with it and keep the whole video in that style; copy all refs into styleRefImageUrls.`;
+}
+
+export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string, mem?: MemoryCtx, kit: KitItem[] = []) =>
   callLlm(
     "artDirector",
     VisualDirection,
     withNotes(
       `Role: Art Director. Turn the chosen concept into visual direction and a shot list (3-5 shots, total <= 40 seconds, each shot 4-12 seconds).
 Concept: ${JSON.stringify(creative)}
-Product: ${brief.product}. Audience: ${brief.audience}.`,
+Product: ${brief.product}. Audience: ${brief.audience}.${creativeKitPrompt(kit)}`,
       notes,
     ),
     mem,

@@ -86,10 +86,13 @@ export const campaignPipeline = inngest.createFunction(
     const { campaignId, from, notes, reason } = data;
     const runs = (s: (typeof STAGES)[number]) => STAGES.indexOf(from) <= STAGES.indexOf(s);
 
-    const { runId, brief } = await step.run("init", async () => {
-      const c = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+    const { runId, brief, kit } = await step.run("init", async () => {
+      const c = await db.campaign.findUniqueOrThrow({
+        where: { id: campaignId },
+        include: { creativeAssets: { select: { kind: true, name: true, description: true, imageUrls: true } } },
+      });
       const run = await db.run.create({ data: { campaignId, inngestRunId, status: "running" } });
-      return { runId: run.id, brief: ClientBrief.parse(c.clientBrief) };
+      return { runId: run.id, brief: ClientBrief.parse(c.clientBrief), kit: c.creativeAssets };
     });
 
     // Run the agent when its stage is due, otherwise reuse its latest artifact.
@@ -111,7 +114,7 @@ export const campaignPipeline = inngest.createFunction(
       const mem = { runId, campaignId, brief };
       const internal = (await agent("accountManager", () => accountManager(brief, [], mem))) as InternalBrief;
       const creative = (await agent("creativeDirector", () => creativeDirector(internal, noteFor("creativeDirector"), mem))) as CreativeBrief;
-      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector"), mem))) as VisualDirection;
+      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector"), mem, kit))) as VisualDirection;
 
       const plan: ProductionPlan = runs("producer")
         ? await step.run("producer", () =>

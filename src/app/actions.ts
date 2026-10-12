@@ -29,19 +29,35 @@ export async function saveSettings(form: FormData) {
 
 export async function createCampaign(form: FormData) {
   const lines = (k: string) => String(form.get(k) ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+  // Multi-select chips + optional free-text detail collapse into the single string the agents read.
+  const merge = (chips: string, detail: string) =>
+    [form.getAll(chips).map(String).join("; "), String(form.get(detail) ?? "").trim()].filter(Boolean).join(". ");
+  const startDate = String(form.get("startDate") ?? "");
+  const deadline = String(form.get("deadline") ?? "");
+  if (startDate && deadline && startDate > deadline) throw new Error("Campaign end date must be on or after the start date");
+  const objective = merge("goals", "objective");
+  const audience = merge("audiences", "audience");
+  if (!objective) throw new Error("Pick at least one business goal or describe the goal");
+  if (!audience) throw new Error("Pick at least one target audience or describe the audience");
   const brief = ClientBrief.parse({
-    objective: form.get("objective"),
+    objective,
     product: form.get("product"),
-    audience: form.get("audience"),
+    audience,
     kpi: form.get("kpi") ?? "",
     platforms: form.getAll("platforms"),
     budgetCapUsd: Number(form.get("budgetCapUsd")),
-    deadline: form.get("deadline") ?? "",
+    startDate,
+    deadline,
     references: lines("references"),
     defaultSource: form.get("defaultSource"),
   });
   const c = await db.campaign.create({
-    data: { clientBrief: brief, budgetCapUsd: brief.budgetCapUsd, defaultSource: brief.defaultSource },
+    data: {
+      clientBrief: brief,
+      budgetCapUsd: brief.budgetCapUsd,
+      defaultSource: brief.defaultSource,
+      creativeAssets: { connect: form.getAll("creativeAssetIds").map((id) => ({ id: String(id) })) },
+    },
   });
   await inngest.send({ name: "campaign/brief.submitted", data: { campaignId: c.id } });
   redirect(`/campaigns/${c.id}`);
@@ -170,4 +186,38 @@ export async function restoreShotAsset(assetId: string) {
   });
   await db.shot.update({ where: { id: a.shotId }, data: { status: "ready" } });
   revalidatePath(`/campaigns/${a.shot.campaignId}`);
+}
+
+const CreativeAssetInput = z.object({
+  kind: z.enum(["character", "location", "style"]),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().min(1).max(1500),
+  imageUrls: z.array(z.url({ protocol: /^https?$/ })).max(6),
+});
+
+/** AI Content Creator: add a character, location or video style to the library. */
+export async function saveCreativeAsset(form: FormData) {
+  const data = CreativeAssetInput.parse({
+    kind: form.get("kind"),
+    name: form.get("name"),
+    description: form.get("description"),
+    imageUrls: String(form.get("imageUrls") ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
+  });
+  await db.creativeAsset.create({ data });
+  revalidatePath("/creator");
+}
+
+export async function deleteCreativeAsset(form: FormData) {
+  await db.creativeAsset.delete({ where: { id: z.string().min(1).parse(form.get("id")) } });
+  revalidatePath("/creator");
+}
+
+/** Link or unlink a library item to a campaign. Applies from the next Art Director run of that campaign. */
+export async function linkCreativeAsset(form: FormData) {
+  const id = z.string().min(1).parse(form.get("id"));
+  const campaignId = z.string().min(1).parse(form.get("campaignId"));
+  const op = form.get("unlink") ? "disconnect" : "connect";
+  await db.creativeAsset.update({ where: { id }, data: { campaigns: { [op]: { id: campaignId } } } });
+  revalidatePath("/creator");
+  revalidatePath(`/campaigns/${campaignId}`);
 }

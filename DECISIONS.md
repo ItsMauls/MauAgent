@@ -39,8 +39,8 @@ Gaps vs PRD F10/F13:
 - No publishing (F11), Trend Scout (F12) or metrics pulls yet, so Publication/Trends/Analytics have no data source.
 
 ## Dashboard menus: decisions
-- **UI language stays English** (product owner, 12 Oct 2026), overriding PRD §6 "Bahasa Indonesia by default". Routes: `/approval`, `/pipeline`, `/costs`, `/trends`, `/analytics`. Detail route stays `/campaigns/[id]`.
-- **Sidebar items are added in the stage that builds the page** (no links to pages that don't exist yet). Final order: Campaigns, New Brief, Approval, Pipeline, Costs, Trends, Analytics, Settings.
+- **UI language stays English** (product owner, 12 Oct 2026), overriding PRD §6 "Bahasa Indonesia by default". Routes: `/approval`, `/campaigns/workflow` (was `/pipeline`, redirected), `/costs`, `/trends`, `/analytics`. Detail route stays `/campaigns/[id]`.
+- **Sidebar items are added in the stage that builds the page** (no links to pages that don't exist yet). Final order: Campaigns, Briefs, Approval, Pipeline, Costs, Trends, Analytics, Settings.
 - **New status `AWAITING_BUDGET`** for the budget gate (PRD §3.1 has no state for it). It appears in the Approval queue and the sidebar badge together with `AWAITING_APPROVAL` and `AWAITING_VIDEO_UPLOAD`.
 - **Budget gate** runs after the Producer and checks both the campaign cap and the monthly cap (`src/lib/cost.ts › budgetGate`). Event `campaign/budget.decision` `{action: proceed|cancel}`; "change cap" updates `Campaign.budgetCapUsd` in the server action, then sends `proceed`. Timeout 7 days → `EXPIRED`.
 - **Revise/regenerate = a new run of the same function.** `campaign/brief.submitted` accepts `{from, notes, shotIds, reason, budgetConfirmed}`; stages before `from` reuse their latest Artifact. Each round gets its own `Run` (old one marked `superseded`), which keeps step IDs unique and makes every round visible on the Pipeline page.
@@ -56,7 +56,7 @@ Gaps vs PRD F10/F13:
 ## Stage 2: Pipeline
 - **The state machine is enforced in code** (`src/lib/status.ts`). Pipeline status changes go through an atomic conditional update (`WHERE status IN allowedFrom(to)`). An invalid jump throws `NonRetriableError`, so the run is marked FAILED instead of silently corrupting the status. Setting the same status again is allowed (step retries). `FAILED` is reachable from any non-terminal status. The transitions include the rerun paths: REVISING/REGENERATING → AWAITING_BUDGET / AWAITING_VIDEO_UPLOAD / POST_PRODUCTION → AWAITING_APPROVAL.
 - **Lanes come from the latest Run.** A stage with no Step row but an existing artifact is shown as "Reused" (a rerun skipped it). The Videographer has no Step rows (it is many small Inngest steps), so its lane is derived from the shot slots.
-- **"Log" = Step history per campaignId + step** across all runs, with the full error and the Inngest run ID, at `/pipeline?campaign=…&step=…`. There is no separate log store; Step rows are the structured log.
+- **"Log" = Step history per campaignId + step** across all runs, with the full error and the Inngest run ID, at `/campaigns/workflow?campaign=…&step=…`. There is no separate log store; Step rows are the structured log.
 - **Polling:** `router.refresh()` every 10 s while the tab is visible (`AutoRefresh`). No websocket.
 - **Demo data:** `npm run db:seed:demo` (`prisma/seed-demo.ts`) creates `demo_kopi` (awaiting approval after one post-production revision) and `demo_bakery` (failed at the Creative Director after 4 attempts). It is idempotent with fixed IDs. Its videos are real ffmpeg clips uploaded to S3 when S3 is reachable. The demo campaigns have no live Inngest run, so decisions on them create a Decision row and send the event, but nothing advances.
 
@@ -121,7 +121,7 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **`ContentItem` → `Campaign` is 1:1** (Stage 4), via a nullable unique `Campaign.contentItemId`. Campaigns created from New Brief stay valid without an item. `campaign/brief.submitted` gains optional `contentItemId`, `talentIds`, `locationId` and `targetAccountIds` fields, so old events still parse.
 - **Single user.** Workspaces are sidebar groups, not permissions. To support more users later, add `ownerId`/`workspaceId` columns to the new tables and scope queries by them. No auth model changes now.
 - **Sidebar groups:**
-  - Groups: Operations (Campaigns, New Brief, Approval, Pipeline), then Social Media Specialist (Accounts), then Settings.
+  - Groups: Operations (Campaigns, Briefs, Approval, Pipeline), then Social Media Specialist (Accounts), then Settings.
   - The Officer and Insights groups appear once their pages exist, following the rule that items arrive with their page.
   - Settings links to `/accounts`.
 - **Mapping for later stages:**
@@ -166,3 +166,8 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Known gaps:**
   - The per-account performance summary needs `MetricSnapshot`, so it comes with Analytics.
   - The Stage 5 publish step will refresh a TikTok token on demand, because the daily check alone can leave it expired for part of the day.
+
+## AI Content Creator
+- **Library at `/creator`** (sidebar under Operations): characters, locations and video styles (`CreativeAsset`, `kind` enum) with optional reference image URLs. Style presets (8-bit pixel art, 2D animation, 3D cartoon, Anime, Claymation, Live action) are one-click adds, not seeded rows.
+- **Many-to-many with Campaign.** Link at brief time (Creative kit chips on `/brief`) or later from each library card (link/unlink any campaign, any status).
+- **Only the Art Director reads the kit** (`creativeKitPrompt` in `src/lib/agents/index.ts`), loaded in the pipeline `init` step. It must build `characterDescription`, shot settings, `moodboardPrompts[0]` and `styleRefImageUrls` from it, so the kit reaches the Seedance prompt package through the existing fields. A kit change on an existing campaign applies from its next Art Director run (a revision routed to the Art Director, or an earlier stage).
