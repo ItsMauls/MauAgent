@@ -98,6 +98,8 @@ model Campaign {
   costs         CostEntry[]
   publishJobs   PublishJob[]
   creativeAssets CreativeAsset[]
+
+  @@index([status])
 }
 
 enum CreativeKind {
@@ -127,6 +129,8 @@ model Run {
   startedAt    DateTime  @default(now())
   endedAt      DateTime?
   steps        Step[]
+
+  @@index([campaignId, status])
 }
 
 model Step {
@@ -139,6 +143,9 @@ model Step {
   startedAt DateTime  @default(now())
   endedAt   DateTime?
   error     String?
+
+  @@index([runId])
+  @@index([agentRole, status])
 }
 
 model Artifact {
@@ -153,6 +160,7 @@ model Artifact {
   createdAt  DateTime @default(now())
 
   @@unique([campaignId, agentRole, version])
+  @@index([agentRole, createdAt])
 }
 
 model Shot {

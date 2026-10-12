@@ -1,5 +1,7 @@
 import type { CampaignStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { DEFAULT_PERSONAS, isAgentRole } from "@/lib/agents/persona";
+import { Persona } from "@/lib/agents/schemas";
 import { ROLES } from "./roles";
 import { GATE_OWNER, roleWork, type Snapshot } from "./status";
 
@@ -33,6 +35,17 @@ export async function boardSnapshot(): Promise<Snapshot> {
     waiting: gated.map((c) => ({ campaignId: c.id, product: product(c.clientBrief, c.id), status: c.status, since: c.runs[0]?.steps[0]?.endedAt ?? c.createdAt })),
     tasks: [], // AgentTask rows join here once direct tasks exist.
   };
+}
+
+/** Display name per role: active persona nickname (one query), else the role label. */
+export async function agentNames() {
+  const rows = await db.agentProfile.findMany({ orderBy: { version: "desc" }, distinct: ["role"], select: { role: true, persona: true } });
+  const fromDb = new Map(rows.map((r) => [r.role, Persona.safeParse(r.persona)]));
+  return Object.fromEntries(ROLES.map((r) => {
+    const p = fromDb.get(r.agentRole);
+    const nick = p?.success ? p.data.nickname : isAgentRole(r.agentRole) ? DEFAULT_PERSONAS[r.agentRole].nickname : r.label;
+    return [r.agentRole, nick];
+  })) as Record<string, string>;
 }
 
 export function roleBadges(s: Snapshot) {
