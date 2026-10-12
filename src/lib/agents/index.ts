@@ -14,6 +14,7 @@ import {
 } from "./schemas";
 
 import { getPersona, isAgentRole, personaSystem, SYSTEM_ID } from "./persona";
+import { recallMemory, type MemoryCtx } from "./memory";
 
 function modelFor(role: string) {
   return process.env[`AGENT_MODEL_${role.toUpperCase()}`] ?? process.env.AGENT_MODEL_DEFAULT ?? "gemini-2.5-flash";
@@ -29,10 +30,13 @@ async function llmCost(model: string, inTok = 0, outTok = 0) {
   return (inTok / 1e6) * price("1M_input_tokens") + (outTok / 1e6) * price("1M_output_tokens");
 }
 
-async function callLlm<T extends z.ZodTypeAny>(role: string, schema: T, prompt: string) {
+async function callLlm<T extends z.ZodTypeAny>(role: string, schema: T, prompt: string, mem?: MemoryCtx) {
   const model = modelFor(role);
   // Persona is read per call, so a DB edit applies to the next run. The schema still fixes the output format.
-  const system = isAgentRole(role) ? personaSystem(role, (await getPersona(role)).persona) : SYSTEM_ID;
+  // Memory is recalled only inside a pipeline run (mem set), within the token budget from Settings.
+  const system = isAgentRole(role)
+    ? personaSystem(role, (await getPersona(role)).persona) + (mem ? await recallMemory(role, mem) : "")
+    : SYSTEM_ID;
   const { object, usage } = await generateObject({ model: google(model), schema, system, prompt });
   return { payload: object as z.infer<T>, costUsd: await llmCost(model, usage.inputTokens, usage.outputTokens) };
 }
@@ -44,19 +48,20 @@ export async function saveArtifact(campaignId: string, agentRole: string, payloa
   });
 }
 
-export const accountManager = (brief: ClientBrief, trendRefs: string[] = []) =>
+export const accountManager = (brief: ClientBrief, trendRefs: string[] = [], mem?: MemoryCtx) =>
   callLlm(
     "accountManager",
     InternalBrief,
     `Role: Account Manager. Turn the client brief into an internal brief.
 Trend signals: ${trendRefs.length ? trendRefs.join("\n") : "(none yet)"}
 Client brief: ${JSON.stringify(brief)}`,
+    mem,
   );
 
 /** Client revision notes are appended to the prompt of the agent the revision is routed to. */
 const withNotes = (prompt: string, notes?: string) => (notes ? `${prompt}\nClient revision notes (must be addressed): ${notes}` : prompt);
 
-export const creativeDirector = (internal: InternalBrief, notes?: string) =>
+export const creativeDirector = (internal: InternalBrief, notes?: string, mem?: MemoryCtx) =>
   callLlm(
     "creativeDirector",
     CreativeBrief,
@@ -65,9 +70,10 @@ export const creativeDirector = (internal: InternalBrief, notes?: string) =>
 Internal brief: ${JSON.stringify(internal)}`,
       notes,
     ),
+    mem,
   );
 
-export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string) =>
+export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string, mem?: MemoryCtx) =>
   callLlm(
     "artDirector",
     VisualDirection,
@@ -77,11 +83,12 @@ Concept: ${JSON.stringify(creative)}
 Product: ${brief.product}. Audience: ${brief.audience}.`,
       notes,
     ),
+    mem,
   );
 
 // ponytail: text-only QC over the artifacts; switch to Gemini multimodal on the final cut when file upload is wired.
 /** Account Team QC (F9): captions, hashtags, brand-safety checklist, self score. */
-export const accountTeam = (brief: ClientBrief, creative: CreativeBrief, visual: VisualDirection) =>
+export const accountTeam = (brief: ClientBrief, creative: CreativeBrief, visual: VisualDirection, mem?: MemoryCtx) =>
   callLlm(
     "accountTeam",
     ApprovalPackage,
@@ -90,6 +97,7 @@ one caption per platform (${brief.platforms.join(", ")}), hashtags, a brand-safe
 Brief: ${JSON.stringify(brief)}
 Concept: ${JSON.stringify(creative)}
 Shot list: ${JSON.stringify(visual.shotList)}`,
+    mem,
   );
 
 /** Revision routing (F10): a small LLM picks which stage the client's note targets. */

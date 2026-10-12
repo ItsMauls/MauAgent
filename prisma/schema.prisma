@@ -63,6 +63,9 @@ model Setting {
   campaignBudgetUsd  Decimal     @default(20) @db.Decimal(10, 2)
   monthlyBudgetUsd   Decimal     @default(300) @db.Decimal(10, 2)
   defaultVideoSource VideoSource @default(manual_upload)
+  // Agent memory: off = agents run without recall and no episodes are written.
+  memoryEnabled      Boolean     @default(true)
+  memoryTokenBudget  Int         @default(800)
 }
 
 model Campaign {
@@ -188,6 +191,46 @@ model AgentProfile {
   createdAt DateTime @default(now())
 
   @@unique([role, version])
+}
+
+enum MemoryLayer {
+  episodic
+  lesson
+  procedural
+}
+
+// One memory item of one agent role. Every write goes through writeMemory() (secret/PII redaction).
+model AgentMemory {
+  id                String      @id @default(cuid())
+  role              String
+  layer             MemoryLayer
+  content           String
+  tags              String[]
+  campaignId        String?
+  sourceArtifactIds String[]
+  // Evidence (used by lessons/procedural from Stage 3): distinct campaigns that support it.
+  campaignIds       String[]
+  confidence        Float       @default(0)
+  pinned            Boolean     @default(false)
+  archivedAt        DateTime?
+  // episode:campaignId:role — one episode per role per campaign.
+  idemKey           String?     @unique
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([role, layer])
+}
+
+// Which memories an agent saw on a pipeline run (audit + impact evaluation).
+model AgentMemoryUse {
+  id         String   @id @default(cuid())
+  runId      String
+  campaignId String
+  role       String
+  memoryIds  String[]
+  createdAt  DateTime @default(now())
+
+  @@unique([runId, role])
 }
 
 model PriceBook {
