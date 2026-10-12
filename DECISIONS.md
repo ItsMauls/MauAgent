@@ -193,3 +193,13 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Near real time:** the Boards page uses the existing `AutoRefresh` (10 s, only while the tab is visible). No SSE.
 - **No paid call on load:** every card reads Postgres only; the sole outbound calls are in Inngest functions.
 - **Indexes** for Boards queries: `Step(runId)`, `Step(agentRole,status)`, `Run(campaignId,status)`, `Artifact(agentRole,createdAt)`, `Campaign(status)` (migration `20261012150000_boards_indexes`, renamed like the others).
+
+## Boards: Stage 3 (archive & sources)
+- **Search is Postgres `ILIKE` only** (no vectors, no LLM): campaigns by brief JSON or any artifact payload (`::text ILIKE`), prompt packages by `Shot.promptPackage::text`, discussion notes by `Decision.notes`, talent/assets by name and description. `%`/`_` in the query are taken literally. Reports are not searchable and hide while a query is set.
+- **Types:** Campaign history, Reports, Video (valid shot clips + final cuts), Talent (library characters), Assets (library locations and styles), Prompt packages, Discussion notes (client decision notes). **Audio is left out** entirely, chip included: nothing produces audio yet (no ElevenLabs).
+- **Agent AND type** (`archiveSections`): a section shows when it matches the type and the agent can produce it. Campaigns, reports and notes take every agent and filter inside the query (campaigns the role worked on, cost spent by that role, notes aimed at it — regenerate notes go to the Content Creator).
+- **Reports are computed in code** from `Artifact.costUsd` + `CostEntry` (the same sum as the budget caps): spend, cost per approved video, approved videos and the regenerate share of video cost, this calendar month vs the last, with up/down arrows. Views and engagement wait for `MetricSnapshot`; impressions and plays are never shown.
+- **Outcome labels** (`src/lib/boards/outcome.ts`, used here and in Stage 6): rejected / failed / expired from the status; a delivered campaign (APPROVED counts, since publishing is not live) is a success, or needs_revision when the client sent a revise/regenerate (aimed at the role, for a per-agent label); anything else is in progress.
+- **Pagination:** 6 per section, `?p_<type>=n`, reset when a filter changes. Video merges two lists by fetching (page+1)×6 of each (`ponytail:` note in code).
+- **Files:** links are 15-minute presigned URLs (local signature, no network). File size is not shown: it would need an S3 `HeadObject` per item on render.
+- **Load time** was checked per query against the local DB (all archive probes together ≈0.3 s), not as a full authenticated page load.

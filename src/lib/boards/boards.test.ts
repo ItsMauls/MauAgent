@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { integrationViews, type IntegrationCtx } from "../integrations";
 import { addDays, agendaItems, countdown, dayKey, monthGrid } from "./agenda";
 import { roleWork, type Snapshot } from "./status";
+import { archiveSections, delta, likePattern, pageOf } from "./archive";
+import { outcomeLabel } from "./outcome";
 
 const at = (iso: string) => new Date(iso);
 
@@ -114,4 +116,42 @@ test("roleWork: one entry per campaign, busy wins", () => {
   const v = roleWork("videographer", s);
   assert.equal(v.state, "busy");
   assert.deepEqual(v.items.map((i) => [i.title, i.state]), [["Kopi", "busy"]]);
+});
+
+// ---------- archive ----------
+
+test("archiveSections: agent AND type", () => {
+  assert.equal(archiveSections().length, 7);
+  assert.deepEqual(archiveSections("videos"), ["videos"]);
+  // Content Creator owns clips, the library and prompt packages; campaigns/reports/notes filter by role in the query.
+  assert.deepEqual(archiveSections(undefined, "videographer"), ["campaigns", "reports", "videos", "assets", "prompts", "notes"]);
+  assert.deepEqual(archiveSections(undefined, "creativeDirector"), ["campaigns", "reports", "notes"]);
+  assert.deepEqual(archiveSections("talent", "talentManager"), ["talent"]);
+  assert.deepEqual(archiveSections("talent", "creativeDirector"), []); // the combination has nothing
+  assert.deepEqual(archiveSections("bogus", "creativeDirector"), ["campaigns", "reports", "notes"]); // unknown type = all
+});
+
+test("likePattern escapes wildcards; delta compares periods", () => {
+  assert.equal(likePattern("50%_off"), String.raw`%50\%\_off%`);
+  assert.equal(pageOf("-3"), 0);
+  assert.equal(pageOf("2"), 2);
+  assert.deepEqual(delta(12, 10), { dir: "up", pct: 20 });
+  assert.deepEqual(delta(5, 10), { dir: "down", pct: -50 });
+  assert.equal(delta(0, 0), null);
+  assert.deepEqual(delta(3, 0), { dir: "up", pct: null });
+});
+
+// ---------- outcome labels ----------
+
+test("outcomeLabel: per campaign and per agent", () => {
+  const revise = (targetAgent: string) => ({ type: "revise", targetAgent, notes: "faster cut" });
+  assert.equal(outcomeLabel("REJECTED", []), "rejected");
+  assert.equal(outcomeLabel("FAILED", []), "failed");
+  assert.equal(outcomeLabel("EXPIRED", []), "expired");
+  assert.equal(outcomeLabel("AWAITING_APPROVAL", [revise("postProduction")]), "in_progress");
+  assert.equal(outcomeLabel("APPROVED", []), "success");
+  assert.equal(outcomeLabel("PUBLISHED", [revise("postProduction")]), "needs_revision");
+  assert.equal(outcomeLabel("APPROVED", [revise("postProduction")], "postProduction"), "needs_revision");
+  assert.equal(outcomeLabel("APPROVED", [revise("postProduction")], "creativeDirector"), "success");
+  assert.equal(outcomeLabel("APPROVED", [{ type: "regenerate", targetAgent: null, notes: null }], "videographer"), "needs_revision");
 });
