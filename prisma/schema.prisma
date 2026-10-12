@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  DRAFTING
+  AWAITING_VIDEO_UPLOAD
+  POST_PRODUCTION
+  AWAITING_APPROVAL
+  REVISING
+  REGENERATING
+  APPROVED
+  PUBLISHING
+  PUBLISHED
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+enum VideoSource {
+  seedance_api
+  manual_upload
+}
+
+enum AssetOrigin {
+  seedance
+  upload
+}
+
+enum DecisionType {
+  approve
+  revise
+  regenerate
+  reject
+}
+
+enum CostReason {
+  initial
+  revision
+  regenerate
+}
+
+model BrandKit {
+  id         String     @id @default(cuid())
+  name       String
+  logoUrl    String?
+  palette    Json?
+  fonts      Json?
+  voiceId    String?
+  styleNotes String?
+  campaigns  Campaign[]
+}
+
+// Singleton (id = "default"): budget caps configurable from the Settings page.
+model Setting {
+  id                 String      @id @default("default")
+  campaignBudgetUsd  Decimal     @default(20) @db.Decimal(10, 2)
+  monthlyBudgetUsd   Decimal     @default(300) @db.Decimal(10, 2)
+  defaultVideoSource VideoSource @default(manual_upload)
+}
+
+model Campaign {
+  id            String         @id @default(cuid())
+  brandKitId    String?
+  brandKit      BrandKit?      @relation(fields: [brandKitId], references: [id])
+  clientBrief   Json
+  status        CampaignStatus @default(DRAFTING)
+  budgetCapUsd  Decimal        @db.Decimal(10, 2)
+  defaultSource VideoSource
+  finalCutKey   String?
+  createdAt     DateTime       @default(now())
+  runs          Run[]
+  artifacts     Artifact[]
+  shots         Shot[]
+  decisions     Decision[]
+  costs         CostEntry[]
+}
+
+model Run {
+  id           String    @id @default(cuid())
+  campaignId   String
+  campaign     Campaign  @relation(fields: [campaignId], references: [id])
+  inngestRunId String?
+  status       String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  steps        Step[]
+}
+
+model Step {
+  id        String    @id @default(cuid())
+  runId     String
+  run       Run       @relation(fields: [runId], references: [id])
+  agentRole String
+  status    String
+  attempt   Int       @default(1)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  error     String?
+}
+
+model Artifact {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  agentRole  String
+  version    Int
+  payload    Json
+  costUsd    Decimal  @default(0) @db.Decimal(10, 4)
+  runId      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, agentRole, version])
+}
+
+model Shot {
+  id            String      @id @default(cuid())
+  campaignId    String
+  campaign      Campaign    @relation(fields: [campaignId], references: [id])
+  shotId        String
+  source        VideoSource
+  maxAttempts   Int         @default(3)
+  status        String      @default("pending")
+  promptPackage Json?
+  assets        ShotAsset[]
+
+  @@unique([campaignId, shotId])
+}
+
+model ShotAsset {
+  id          String      @id @default(cuid())
+  shotId      String
+  shot        Shot        @relation(fields: [shotId], references: [id])
+  version     Int
+  s3Key       String
+  durationSec Float?
+  hasAudio    Boolean?
+  validation  Json?
+  origin      AssetOrigin
+  createdAt   DateTime    @default(now())
+
+  @@unique([shotId, version])
+}
+
+model Decision {
+  id          String       @id @default(cuid())
+  campaignId  String
+  campaign    Campaign     @relation(fields: [campaignId], references: [id])
+  type        DecisionType
+  notes       String?
+  targetAgent String?
+  shotIds     String[]
+  createdAt   DateTime     @default(now())
+}
+
+model CostEntry {
+  id         String     @id @default(cuid())
+  campaignId String
+  campaign   Campaign   @relation(fields: [campaignId], references: [id])
+  step       String
+  provider   String
+  model      String
+  units      Decimal    @db.Decimal(12, 4)
+  unitPrice  Decimal    @db.Decimal(12, 6)
+  usd        Decimal    @db.Decimal(10, 4)
+  attempt    Int        @default(1)
+  reason     CostReason @default(initial)
+  // campaignId:step:attempt — prevents double charges on retry.
+  idemKey    String     @unique
+  createdAt  DateTime   @default(now())
+}
+
+model PriceBook {
+  id            String   @id @default(cuid())
+  provider      String
+  model         String
+  unit          String
+  unitPrice     Decimal  @db.Decimal(12, 6)
+  effectiveFrom DateTime @default(now())
+
+  @@unique([provider, model, effectiveFrom])
+}
