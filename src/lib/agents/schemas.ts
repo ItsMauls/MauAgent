@@ -78,6 +78,36 @@ export const ProductionPlan = z.object({
 });
 export type ProductionPlan = z.infer<typeof ProductionPlan>;
 
+/** Account Team QC. costSoFar and previewUrl are computed in code, not by the LLM. */
+export const ApprovalPackage = z.object({
+  captionPerPlatform: z.array(z.object({ platform: Platform, caption: z.string() })),
+  hashtags: z.array(z.string()),
+  brandSafetyChecklist: z.array(z.object({ item: z.string(), ok: z.boolean(), note: z.string() })),
+  selfScore: z.number().min(0).max(10).describe("overall quality score 0-10"),
+});
+export type ApprovalPackage = z.infer<typeof ApprovalPackage> & { costSoFar?: number };
+
+/** Pipeline stages a rerun can start from (in order). */
+export const STAGES = ["accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction"] as const;
+export const Stage = z.enum(STAGES);
+export type Stage = z.infer<typeof Stage>;
+export const RevisionTarget = z.enum(["creativeDirector", "artDirector", "postProduction"]);
+
+export const DecisionInput = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("approve") }),
+  z.object({ type: z.literal("reject"), notes: z.string().max(2000).default("") }),
+  z.object({ type: z.literal("revise"), notes: z.string().trim().min(1).max(2000), targetAgent: RevisionTarget.optional() }),
+  z.object({ type: z.literal("regenerate"), shotIds: z.array(z.string().min(1)).min(1), confirmOverCap: z.boolean().default(false) }),
+]);
+export type DecisionInput = z.input<typeof DecisionInput>;
+
+export const BudgetDecisionInput = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("proceed") }),
+  z.object({ action: z.literal("raiseCap"), newCapUsd: z.number().positive() }),
+  z.object({ action: z.literal("cancel") }),
+]);
+export type BudgetDecisionInput = z.input<typeof BudgetDecisionInput>;
+
 export type PromptPackage = {
   shotId: string;
   durationSec: number;

@@ -1,10 +1,12 @@
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
-import type { z } from "zod";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import {
+  ApprovalPackage,
   ClientBrief,
   CreativeBrief,
+  RevisionTarget,
   InternalBrief,
   ProductionPlan,
   VisualDirection,
@@ -49,21 +51,52 @@ Trend signals: ${trendRefs.length ? trendRefs.join("\n") : "(none yet)"}
 Client brief: ${JSON.stringify(brief)}`,
   );
 
-export const creativeDirector = (internal: InternalBrief) =>
+/** Client revision notes are appended to the prompt of the agent the revision is routed to. */
+const withNotes = (prompt: string, notes?: string) => (notes ? `${prompt}\nClient revision notes (must be addressed): ${notes}` : prompt);
+
+export const creativeDirector = (internal: InternalBrief, notes?: string) =>
   callLlm(
     "creativeDirector",
     CreativeBrief,
-    `Role: Creative Director. Create exactly 3 short-video concept options, pick one and explain why.
+    withNotes(
+      `Role: Creative Director. Create exactly 3 short-video concept options, pick one and explain why.
 Internal brief: ${JSON.stringify(internal)}`,
+      notes,
+    ),
   );
 
-export const artDirector = (creative: CreativeBrief, brief: ClientBrief) =>
+export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string) =>
   callLlm(
     "artDirector",
     VisualDirection,
-    `Role: Art Director. Turn the chosen concept into visual direction and a shot list (3-5 shots, total <= 40 seconds, each shot 4-12 seconds).
+    withNotes(
+      `Role: Art Director. Turn the chosen concept into visual direction and a shot list (3-5 shots, total <= 40 seconds, each shot 4-12 seconds).
 Concept: ${JSON.stringify(creative)}
 Product: ${brief.product}. Audience: ${brief.audience}.`,
+      notes,
+    ),
+  );
+
+// ponytail: text-only QC over the artifacts; switch to Gemini multimodal on the final cut when file upload is wired.
+/** Account Team QC (F9): captions, hashtags, brand-safety checklist, self score. */
+export const accountTeam = (brief: ClientBrief, creative: CreativeBrief, visual: VisualDirection) =>
+  callLlm(
+    "accountTeam",
+    ApprovalPackage,
+    `Role: Account Team. QC the deliverable against the brief and prepare the approval package:
+one caption per platform (${brief.platforms.join(", ")}), hashtags, a brand-safety checklist (claims, sensitive topics, AI-content label, licensed music) and a 0-10 self score.
+Brief: ${JSON.stringify(brief)}
+Concept: ${JSON.stringify(creative)}
+Shot list: ${JSON.stringify(visual.shotList)}`,
+  );
+
+/** Revision routing (F10): a small LLM picks which stage the client's note targets. */
+export const routeRevision = (notes: string) =>
+  callLlm(
+    "router",
+    z.object({ target: RevisionTarget }),
+    `Classify this client revision note. creativeDirector = concept/idea/message/hook; artDirector = visuals/shots/look/characters; postProduction = edit/pacing/subtitles/music/timing.
+Note: ${notes}`,
   );
 
 export type PriceLookup = (model: string) => number; // USD per detik video

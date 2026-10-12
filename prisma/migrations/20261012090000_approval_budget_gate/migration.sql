@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "CampaignStatus" ADD VALUE 'AWAITING_BUDGET' BEFORE 'AWAITING_VIDEO_UPLOAD';
+
+-- AlterTable
+ALTER TABLE "Campaign" ADD COLUMN "approvalPackage" JSONB;

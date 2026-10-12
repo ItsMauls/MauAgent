@@ -20,3 +20,35 @@ Decisions that deviate from, or are not covered by, PRD v1.0 (11 Oct 2026).
 - **FFmpeg** uses `ffmpeg-static`/`ffprobe-static` (no system install needed). Post-production runs inside the `/api/inngest` request (`maxDuration` 300). Move to an ECS worker if clips get long.
 - **PriceBook seed contains price 0 (placeholder).** Fill in from the official pricing pages.
 - Entities `TrendSignal`, `PublishJob`, `MetricSnapshot` are not created yet (Phase 1/2).
+
+## Dashboard menus: audit (12 Oct 2026)
+State before this work (Phase 0 code):
+- Routes: `/` (campaign list + stats), `/brief`, `/campaigns/[id]` (pipeline steps, shot cards, upload slots, artifacts, approve/reject), `/settings` (budget caps + default source), `/api/inngest`. Sidebar `src/app/nav.tsx`, styles in `globals.css` (`card`, `pill`, `btn-*`, `input`, `label`), client widgets in `src/app/ui.tsx`, server actions in `src/app/actions.ts`.
+- Auth: `src/middleware.ts` guards every route except `/auth/*` and `/api/inngest`, so new pages and server actions are protected automatically.
+- Prisma: BrandKit, Setting (singleton), Campaign, Run, Step, Artifact, Shot, ShotAsset, Decision, CostEntry, PriceBook. Missing: TrendSignal, PublishJob, MetricSnapshot.
+- Inngest: one function `campaign-pipeline` (`campaign/brief.submitted`); waits on `campaign/assets.complete` and `campaign/client.decision`.
+- Tests: `node:test` via `tsx` (`npm test`), no DB needed.
+
+Gaps vs PRD F10/F13:
+- Pipeline mapped every non-approve decision to REJECTED; no revise/regenerate loop, no revision routing.
+- No budget gate (only a ponytail note); monthly cap not enforced server-side.
+- No Account Team QC / `ApprovalPackage` (captions, hashtags, brand-safety, self score).
+- `decide()` supported approve/reject only; no regenerate estimate; no version compare/restore.
+- Seedance `CostEntry.idemKey` was fixed to attempt `:1`, so a regenerate would have been silently not charged.
+- No Approval, Pipeline, Costs, Trends, Analytics pages; Settings is a single form; no loading/error states.
+- No publishing (F11), Trend Scout (F12) or metrics pulls yet, so Publication/Trends/Analytics have no data source.
+
+## Dashboard menus: decisions
+- **UI language stays English** (product owner, 12 Oct 2026), overriding PRD §6 "Bahasa Indonesia by default". Routes: `/approval`, `/pipeline`, `/costs`, `/trends`, `/analytics`. Detail route stays `/campaigns/[id]`.
+- **Sidebar items are added in the stage that builds the page** (no links to pages that don't exist yet). Final order: Campaigns, New Brief, Approval, Pipeline, Costs, Trends, Analytics, Settings.
+- **New status `AWAITING_BUDGET`** for the budget gate (PRD §3.1 has no state for it). It appears in the Approval queue and the sidebar badge together with `AWAITING_APPROVAL` and `AWAITING_VIDEO_UPLOAD`.
+- **Budget gate** runs after the Producer and checks both the campaign cap and the monthly cap (`src/lib/cost.ts › budgetGate`). Event `campaign/budget.decision` `{action: proceed|cancel}`; "change cap" updates `Campaign.budgetCapUsd` in the server action, then sends `proceed`. Timeout 7 days → `EXPIRED`.
+- **Revise/regenerate = a new run of the same function.** `campaign/brief.submitted` accepts `{from, notes, shotIds, reason, budgetConfirmed}`; stages before `from` reuse their latest Artifact. Each round gets its own `Run` (old one marked `superseded`), which keeps step IDs unique and makes every round visible on the Pipeline page.
+- **Revision routing:** the user may pick the target (Concept / Visuals / Edit); otherwise a small LLM call classifies the note (`routeRevision`, artifact `router`). The chosen target is written back to `Decision.targetAgent`.
+- **Regenerate:** the estimate is computed from PriceBook in code (`estimateRegenerate`), shown before execution and re-checked in the server action; over cap requires an explicit confirmation checkbox, otherwise the action throws. Manual shots cost US$0 and get a fresh round of `maxAttempts` upload attempts. Seedance idemKey is now `campaignId:seedance:shotId:runId`; `CostEntry.reason` comes from the run (`initial`/`revision`/`regenerate`).
+- **Account Team QC is text-only for now** (brief + concept + shot list → captions, hashtags, brand-safety checklist, self score). `costSoFar` is computed in code. Multimodal QC of the final cut comes later.
+- **Free restore:** a final cut is restored by copying the old `postProduction` artifact as a new version and pointing `finalCutKey` at it; a shot clip is restored by copying an old valid `ShotAsset` as a new version. No generation, no cost; history is kept.
+- **Version compare:** final cuts side by side on the Approval card; artifacts side by side (JSON) with a list of changed top-level fields on the Artifacts tab. No diff library.
+- **Known gap:** post-production does not interpret edit notes yet, so a revision routed to post-production re-renders the same cut until full F8 post-production exists.
+- **Known race (accepted):** an event sent in the few ms between a status change and `waitForEvent` becoming active is missed; same as the existing decision wait. The UI only shows the buttons once the status is set.
+- **Publication tab is an empty state** until F11 adds `PublishJob`.

@@ -1,5 +1,9 @@
+/** Statuses that need the user: shown in the Approval queue and counted in the sidebar badge. */
+export const QUEUE_STATUSES = ["AWAITING_BUDGET", "AWAITING_APPROVAL", "AWAITING_VIDEO_UPLOAD"] as const;
+
 const STATUS: Record<string, [string, string]> = {
   DRAFTING: ["Drafting", "border-slate-200 bg-slate-50 text-slate-700"],
+  AWAITING_BUDGET: ["Awaiting budget decision", "border-amber-200 bg-amber-soft text-amber-800"],
   AWAITING_VIDEO_UPLOAD: ["Awaiting video upload", "border-amber-200 bg-amber-soft text-amber-800"],
   POST_PRODUCTION: ["Post-production", "border-blue-200 bg-brand-soft text-brand-dark"],
   AWAITING_APPROVAL: ["Awaiting approval", "border-amber-200 bg-amber-soft text-amber-800"],
