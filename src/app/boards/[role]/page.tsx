@@ -10,7 +10,7 @@ import { agentExperience } from "@/lib/agents/memory";
 import AccountsPage from "../../accounts/page";
 import { AssetsTab, Empty, ShotsTab } from "../../campaigns/[id]/shots";
 import { CreatorLibrary } from "../library";
-import { ArtifactsPanel, MemoryPanel, QuickTask } from "../workspace";
+import { ArtifactsPanel, MemoryPanel, QuickTask, ReadyTalent, TalentRequests } from "../workspace";
 import { TASKS } from "@/lib/boards/tasks";
 import { initials, STATE_PILL } from "../cards";
 
@@ -23,6 +23,7 @@ const TAB_LABEL: Record<Tab, string> = {
   artifacts: "Artifacts",
   memory: "Memory",
   accounts: "Accounts",
+  ready: "Ready talent",
   queue: "Execution queue",
   schedule: "Schedule & publishing",
   library: "Library",
@@ -108,7 +109,8 @@ export default async function RolePage({ params, searchParams }: { params: Promi
           ))}
         {tab === "accounts" && <AccountsPage searchParams={Promise.resolve({})} />}
         {tab === "library" && <CreatorLibrary />}
-        {tab === "talent" && <CreatorLibrary kinds={["character"]} />}
+        {tab === "talent" && <><TalentRequests /><CreatorLibrary kinds={["character"]} /></>}
+        {tab === "ready" && <ReadyTalent />}
         {tab === "queue" && <ExecutionQueue />}
         {tab === "schedule" && <Schedule />}
       </section>

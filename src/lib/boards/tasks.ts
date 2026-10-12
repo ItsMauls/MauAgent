@@ -2,7 +2,8 @@
 // agent functions. Input schemas are Zod; the workspace form is generated from them (z.toJSONSchema).
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { accountManager, artDirector, creativeDirector, llmCost, modelFor, producer, promptPackage } from "@/lib/agents";
+import { accountManager, accountTeam, artDirector, creativeDirector, llmCost, modelFor, producer, promptPackage } from "@/lib/agents";
+import { renderCut } from "@/lib/media/renderCut";
 import { ClientBrief, CreativeBrief, InternalBrief, Platform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
 import { budgetGate, latestPrice, monthSpent } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
@@ -10,6 +11,8 @@ import { seedanceConfig } from "@/lib/providers/seedance";
 /** Form field that picks an existing artifact of `role` (campaign or task output). */
 const ref = (role: string, title: string) => z.string().min(1).meta({ title, ref: role });
 const text = (title: string, max = 2000) => z.string().trim().min(1).max(max).meta({ title, multiline: true });
+/** Form field that picks a campaign. */
+const campaignRef = (title: string) => z.string().min(1).meta({ title, ref: "campaign" });
 const ids = (kind: string, title: string) => z.array(z.string()).max(10).default([]).meta({ title, library: kind });
 
 export type TaskCtx = {
@@ -110,14 +113,37 @@ export const TASKS: Record<string, TaskDef> = {
       return { payload: { packages: visual.shotList.map((s) => promptPackage(c.taskId, s, visual)) }, costUsd: 0 };
     },
   }),
+  postProduction: def({
+    output: "RenderBundle (final cut from a campaign's clips)",
+    llm: false,
+    input: z.object({ campaignId: campaignRef("Campaign with clips") }),
+    // A new cut under tasks/, the campaign itself (finalCutKey, status) is not touched.
+    run: async (i, c) => ({
+      payload: await renderCut(i.campaignId, await latestOf(i.campaignId, "artDirector", VisualDirection), `tasks/${c.taskId}/finalCut-${Date.now()}.mp4`),
+      costUsd: 0,
+    }),
+  }),
+  accountTeam: def({
+    output: "ApprovalPackage (QC report)",
+    llm: true,
+    input: z.object({ campaignId: campaignRef("Campaign to check") }),
+    run: async (i) => {
+      const camp = await db.campaign.findUniqueOrThrow({ where: { id: i.campaignId }, select: { clientBrief: true } });
+      return accountTeam(
+        ClientBrief.parse(camp.clientBrief),
+        await latestOf(i.campaignId, "creativeDirector", CreativeBrief),
+        await latestOf(i.campaignId, "artDirector", VisualDirection),
+      );
+    },
+  }),
 };
 
-/** Short human title for a task from its input. */
-export const taskTitle = (input: unknown) => {
-  const i = (input ?? {}) as Record<string, unknown>;
-  const s = [i.idea, i.objective, i.request, i.product].find((v) => typeof v === "string" && v) as string | undefined;
-  return s ? (s.length > 80 ? `${s.slice(0, 79)}…` : s) : "Task";
-};
+/** Latest artifact of a role in a campaign, validated. */
+async function latestOf<T extends z.ZodTypeAny>(campaignId: string, role: string, schema: T): Promise<z.infer<T>> {
+  const a = await db.artifact.findFirst({ where: { campaignId, agentRole: role }, orderBy: { version: "desc" } });
+  if (!a) throw new Error(`This campaign has no ${role} output yet`);
+  return schema.parse(a.payload);
+}
 
 // ---------- estimate + budget gate (deterministic) ----------
 

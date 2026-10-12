@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { deleteCreativeAsset, linkCreativeAsset, saveCreativeAsset } from "../actions";
+import { setTalentLock } from "./actions";
 
 const KINDS = [
   { v: "character", t: "Characters", icon: "face", hint: "Who appears: look, outfit, age, personality. Reused word for word in every shot." },
@@ -110,6 +111,16 @@ export async function CreatorLibrary({ kinds = ["character", "location", "style"
                     <li key={a.id} className="card flex flex-col gap-3 p-5">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-bold">{a.name}</h3>
+                        {a.kind === "character" && (
+                          <form action={setTalentLock} className="ml-auto">
+                            <input type="hidden" name="id" value={a.id} />
+                            <input type="hidden" name="lock" value={a.lockedAt ? "0" : "1"} />
+                            <button className={`pill ${a.lockedAt ? "border-emerald-200 bg-ok-soft text-emerald-800" : "border-line bg-white text-ink-2 hover:bg-brand-soft"}`}>
+                              <span className="material-symbols-outlined !text-[14px]">{a.lockedAt ? "lock" : "lock_open"}</span>
+                              {a.lockedAt ? "Locked · unlock" : "Lock as ready"}
+                            </button>
+                          </form>
+                        )}
                         <form action={deleteCreativeAsset}>
                           <input type="hidden" name="id" value={a.id} />
                           <button aria-label={`Delete ${a.name}`} className="text-ink-3 hover:text-red-700">

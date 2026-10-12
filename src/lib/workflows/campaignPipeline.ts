@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { inngest } from "@/lib/inngest";
@@ -25,8 +22,8 @@ import {
   type VisualDirection,
 } from "@/lib/agents/schemas";
 import { createSeedanceTask, getSeedanceTask, seedanceConfig } from "@/lib/providers/seedance";
-import { finalCut } from "@/lib/media";
-import { download, uploadFile, uploadFromUrl } from "@/lib/s3";
+import { renderCut } from "@/lib/media/renderCut";
+import { uploadFromUrl } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
 import { budgetGate, campaignSpent, latestPrice, monthSpent } from "@/lib/cost";
 import { allowedFrom } from "@/lib/status";
@@ -241,31 +238,9 @@ export const campaignPipeline = inngest.createFunction(
       await step.run("post-production", () =>
         tracked(runId, "postProduction", attempt, async () => {
           await setStatus(campaignId, "POST_PRODUCTION");
-          const dir = await mkdtemp(join(tmpdir(), "mauagent-"));
-          try {
-            const clips = [];
-            for (const spec of visual.shotList) {
-              const shot = await db.shot.findUniqueOrThrow({
-                where: { campaignId_shotId: { campaignId, shotId: spec.shotId } },
-                include: { assets: { where: { validation: { path: ["ok"], equals: true } }, orderBy: { version: "desc" }, take: 1 } },
-              });
-              const a = shot.assets[0];
-              const file = join(dir, `${spec.shotId}.mp4`);
-              await download(a.s3Key, file);
-              clips.push({ file, durationSec: a.durationSec ?? spec.durationSec, voLine: spec.voLine, assetVersion: a.version });
-            }
-            const out = await finalCut(dir, clips);
-            const key = `campaigns/${campaignId}/finalCut-${Date.now()}.mp4`;
-            await uploadFile(key, out);
-            await db.campaign.update({ where: { id: campaignId }, data: { finalCutKey: key } });
-            await saveArtifact(
-              campaignId, "postProduction",
-              { finalCut: key, clips: clips.map((c) => ({ file: c.file.split(/[\\/]/).pop(), assetVersion: c.assetVersion })), notes: noteFor("postProduction") ?? null },
-              0, runId,
-            );
-          } finally {
-            await rm(dir, { recursive: true, force: true });
-          }
+          const cut = await renderCut(campaignId, visual, `campaigns/${campaignId}/finalCut-${Date.now()}.mp4`);
+          await db.campaign.update({ where: { id: campaignId }, data: { finalCutKey: cut.finalCut } });
+          await saveArtifact(campaignId, "postProduction", { ...cut, notes: noteFor("postProduction") ?? null }, 0, runId);
         }),
       );
 

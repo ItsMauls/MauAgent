@@ -1,5 +1,12 @@
 // Agent status for Boards, derived deterministically from Step / Campaign / AgentTask rows (never an LLM). Pure: tested.
 
+/** Short human title for a task from its input. */
+export const taskTitle = (input: unknown) => {
+  const i = (input ?? {}) as Record<string, unknown>;
+  const s = [i.idea, i.objective, i.request, i.product].find((v) => typeof v === "string" && v) as string | undefined;
+  return s ? (s.length > 80 ? `${s.slice(0, 79)}…` : s) : "Task";
+};
+
 export type AgentState = "busy" | "waiting" | "idle";
 
 export type WorkItem = { key: string; title: string; stage: string; since: Date; state: Exclude<AgentState, "idle">; href: string };

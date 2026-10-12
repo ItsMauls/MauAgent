@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { likePattern } from "@/lib/boards/archive";
 import { roleByAgent, type BoardRole } from "@/lib/boards/roles";
-import { TASKS, taskTitle } from "@/lib/boards/tasks";
+import { TASKS } from "@/lib/boards/tasks";
+import { taskTitle } from "@/lib/boards/status";
 import { formatDuration } from "@/lib/status";
 import { ChangedKeys, Empty } from "../campaigns/[id]/shots";
-import { sendTaskToFlow } from "./actions";
+import { fulfilTalent, requestTalent, sendTaskToFlow } from "./actions";
 import { RetryButton, TaskForm, type Option } from "./task-form";
 
 const product = (b: unknown) => (b as { product?: string } | null)?.product;
@@ -36,15 +37,22 @@ export async function QuickTask({ role, taskId }: { role: BoardRole; taskId?: st
   const kinds = [...new Set(fields.map((p) => p.library).filter((k): k is string => !!k))];
 
   const [refRows, libRows, tasks, selected] = await Promise.all([
-    Promise.all(refRoles.map((r) => db.artifact.findMany({
-      where: { agentRole: r }, orderBy: { createdAt: "desc" }, take: 25,
-      select: { id: true, agentRole: true, version: true, createdAt: true, campaign: { select: { clientBrief: true } } },
-    }))),
+    Promise.all(refRoles.map(async (r): Promise<Option[]> =>
+      r === "campaign"
+        ? (await db.campaign.findMany({
+            where: { artifacts: { some: { agentRole: "artDirector" } } }, orderBy: { createdAt: "desc" }, take: 25,
+            select: { id: true, status: true, clientBrief: true },
+          })).map((c) => ({ id: c.id, label: `${product(c.clientBrief) ?? c.id} · ${c.status.toLowerCase().replace(/_/g, " ")}` }))
+        : (await db.artifact.findMany({
+            where: { agentRole: r }, orderBy: { createdAt: "desc" }, take: 25,
+            select: { id: true, agentRole: true, version: true, createdAt: true, campaign: { select: { clientBrief: true } } },
+          })).map((a) => ({ id: a.id, label: artifactLabel(a) })),
+    )),
     kinds.length ? db.creativeAsset.findMany({ where: { kind: { in: kinds as ("character" | "location" | "style")[] } }, orderBy: { name: "asc" }, select: { id: true, kind: true, name: true } }) : [],
     db.agentTask.findMany({ where: { agentRole: role.agentRole }, orderBy: { createdAt: "desc" }, take: 20 }),
     taskId ? db.agentTask.findUnique({ where: { id: taskId } }) : null,
   ]);
-  const refs: Record<string, Option[]> = Object.fromEntries(refRoles.map((r, i) => [r, refRows[i].map((a) => ({ id: a.id, label: artifactLabel(a) }))]));
+  const refs: Record<string, Option[]> = Object.fromEntries(refRoles.map((r, i) => [r, refRows[i]]));
   const library: Record<string, Option[]> = Object.fromEntries(kinds.map((k) => [k, libRows.filter((a) => a.kind === k).map((a) => ({ id: a.id, label: a.name }))]));
 
   return (
@@ -203,5 +211,121 @@ export async function MemoryPanel({ role }: { role: BoardRole }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ---------- Talent hand-off ----------
+
+/** Content Creator: locked talent (ready to use) and the "request new talent" hand-off to the Talent Manager. */
+export async function ReadyTalent() {
+  const [talent, campaigns, requests] = await Promise.all([
+    db.creativeAsset.findMany({ where: { kind: "character", lockedAt: { not: null } }, orderBy: { lockedAt: "desc" } }),
+    db.campaign.findMany({ where: { status: { notIn: ["REJECTED", "EXPIRED", "FAILED", "PUBLISHED"] } }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, clientBrief: true } }),
+    db.agentTask.findMany({ where: { agentRole: "talentManager", requestedByRole: "videographer" }, orderBy: { createdAt: "desc" }, take: 10 }),
+  ]);
+  return (
+    <div className="grid gap-6 lg:grid-cols-12">
+      <div className="space-y-3 lg:col-span-7">
+        <h2 className="text-lg font-bold">Ready talent ({talent.length})</h2>
+        {!talent.length ? (
+          <p className="rounded-2xl bg-canvas p-6 text-center text-sm text-ink-2">No locked talent yet. Request one, or lock a character in the Talent Manager workspace.</p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {talent.map((a) => (
+              <li key={a.id} className="flex gap-3 rounded-2xl bg-canvas p-3">
+                {a.imageUrls[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={a.imageUrls[0]} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
+                ) : (
+                  <span aria-hidden className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white text-ink-3"><span className="material-symbols-outlined">face</span></span>
+                )}
+                <span className="min-w-0">
+                  <span className="block font-semibold">{a.name}</span>
+                  <span className="line-clamp-2 text-xs text-ink-2">{a.description}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="space-y-3 lg:col-span-5">
+        <h2 className="text-lg font-bold">Request new talent</h2>
+        <form action={requestTalent} className="space-y-3">
+          <label className="block"><span className="label">What do you need?</span>
+            <textarea name="request" required maxLength={1500} rows={3} placeholder="e.g. A friendly barista in her 20s for a morning coffee reel" className="input" />
+          </label>
+          <label className="block"><span className="label">For campaign (optional)</span>
+            <select name="campaignId" className="input">
+              <option value="">—</option>
+              {campaigns.map((c) => <option key={c.id} value={c.id}>{product(c.clientBrief) ?? c.id}</option>)}
+            </select>
+          </label>
+          <button className="btn-primary"><span className="material-symbols-outlined">send</span>Send to Talent Manager</button>
+        </form>
+        <HandoffList tasks={requests} />
+      </div>
+    </div>
+  );
+}
+
+/** Talent Manager: open requests from other agents, each answered with a new or existing character. */
+export async function TalentRequests() {
+  const [open, characters] = await Promise.all([
+    db.agentTask.findMany({ where: { agentRole: "talentManager" }, orderBy: [{ status: "desc" }, { createdAt: "desc" }], take: 20 }),
+    db.creativeAsset.findMany({ where: { kind: "character" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
+  const waiting = open.filter((t) => t.status === "WAITING");
+  return (
+    <section aria-labelledby="req-h" className="mb-8 space-y-3">
+      <h2 id="req-h" className="text-lg font-bold">Requests ({waiting.length} open)</h2>
+      {!waiting.length && <p className="rounded-2xl bg-canvas p-4 text-sm text-ink-2">No open requests.</p>}
+      {waiting.map((t) => {
+        const i = t.input as { request?: string; product?: string; creativeAssetId?: string };
+        const answer = characters.find((c) => c.id === i.creativeAssetId);
+        return (
+          <article key={t.id} className="space-y-3 rounded-2xl bg-canvas p-4 text-sm">
+            <p>
+              <span className="font-semibold">{roleByAgent(t.requestedByRole ?? "")?.label ?? "Owner"}</span> asks{i.product && <> for <span className="font-semibold">{i.product}</span></>}: {i.request}
+            </p>
+            {answer ? (
+              <p className="text-amber-800">Answered with <span className="font-semibold">{answer.name}</span>. Lock it below to hand it over.</p>
+            ) : (
+              <form action={fulfilTalent.bind(null, t.id)} className="grid gap-2 sm:grid-cols-2">
+                <label className="block sm:col-span-2"><span className="label">Use an existing character</span>
+                  <select name="creativeAssetId" className="input">
+                    <option value="">— or create a new one below —</option>
+                    {characters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+                <label className="block"><span className="label">New name</span><input name="name" maxLength={80} className="input" /></label>
+                <label className="block"><span className="label">Reference image URLs</span><textarea name="imageUrls" rows={1} className="input font-mono" /></label>
+                <label className="block sm:col-span-2"><span className="label">Description / talent sheet</span><textarea name="description" maxLength={1500} rows={3} className="input" /></label>
+                <button className="btn-primary sm:col-span-2">Answer request</button>
+              </form>
+            )}
+          </article>
+        );
+      })}
+      <HandoffList tasks={open.filter((t) => t.status !== "WAITING")} />
+    </section>
+  );
+}
+
+/** Hand-off history: who asked, who did it, result. */
+function HandoffList({ tasks }: { tasks: { id: string; status: string; requestedByRole: string | null; input: unknown; createdAt: Date; updatedAt: Date }[] }) {
+  if (!tasks.length) return null;
+  return (
+    <details className="rounded-2xl bg-canvas p-3 text-sm">
+      <summary className="cursor-pointer font-semibold">Hand-off history ({tasks.length})</summary>
+      <ul className="mt-2 space-y-1">
+        {tasks.map((t) => (
+          <li key={t.id} className="flex flex-wrap gap-2">
+            <span className={`pill ${TASK_PILL[t.status]}`}>{t.status.toLowerCase()}</span>
+            <span>{roleByAgent(t.requestedByRole ?? "")?.label ?? "Owner"} → Talent Manager: {taskTitle(t.input)}</span>
+            <span className="ml-auto text-xs text-ink-2">{when(t.status === "DONE" ? t.updatedAt : t.createdAt)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
