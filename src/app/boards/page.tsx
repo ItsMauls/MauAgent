@@ -3,6 +3,7 @@ import { isDay } from "@/lib/boards/agenda";
 import { getSettings } from "../actions";
 import { AutoRefresh } from "../ui";
 import { AgendaCard, CardSkeleton, IntegrationsCard } from "./cards";
+import { SessionsCard, TeamCard } from "./team";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,16 @@ export default async function BoardsPage({ searchParams }: { searchParams: Promi
         <div className="lg:col-span-7">
           <Suspense fallback={<CardSkeleton />}>
             <IntegrationsCard />
+          </Suspense>
+        </div>
+        <div className="lg:col-span-12">
+          <Suspense fallback={<CardSkeleton />}>
+            <TeamCard agent={sp.agent} qs={qs} />
+          </Suspense>
+        </div>
+        <div className="lg:col-span-5">
+          <Suspense fallback={<CardSkeleton />}>
+            <SessionsCard session={sp.session} qs={qs} />
           </Suspense>
         </div>
       </div>

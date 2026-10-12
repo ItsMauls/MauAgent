@@ -186,3 +186,10 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Health check:** Inngest `integrations-health` (daily 03:10 Asia/Jakarta + `integrations/check` from the card's Check button) runs free calls only (S3 `HeadBucket`, Gemini model list with the key in a header) and caches them in `IntegrationStatus`. The page never calls a provider.
 - **Card isolation:** each card is an async server component in its own `<Suspense>` with a skeleton; `load()` turns a failure into that card's error state.
 - **Migration** `20261012140000_boards_integrations` was renamed (local clock gave it an earlier timestamp), same as before.
+
+## Boards: Stage 2 (team focus, agent sessions)
+- **Team focus** cards: persona nickname (one `AgentProfile` query, JSON default as fallback), role, seniority from `agentExperience`, status from `roleWork`, up to 2 work items (+n) with time in stage, and the last delivered campaign the role worked on ("Approved/Published …, first pass | after n revisions"). Engagement rate is left out until `MetricSnapshot` exists. "Filter archive" sets `?agent=` for card D. Latest feedback joins in Stage 6.
+- **Agent sessions = pipeline Runs** (no Deliberation entity exists, so **no `AgentSession` table**: it would have no writer). Participants are the roles with Steps in the run, the green dot is the running Step, From/To are the run's start/end ("Ongoing"), and Adopted/Skipped are the Creative Director's chosen vs. other concepts in that campaign. "Enter meeting room" opens the campaign on the Workflow page. With no live run, the last run is shown. When deliberation lands, it can add a `Deliberation` table and this card reads it instead.
+- **Near real time:** the Boards page uses the existing `AutoRefresh` (10 s, only while the tab is visible). No SSE.
+- **No paid call on load:** every card reads Postgres only; the sole outbound calls are in Inngest functions.
+- **Indexes** for Boards queries: `Step(runId)`, `Step(agentRole,status)`, `Run(campaignId,status)`, `Artifact(agentRole,createdAt)`, `Campaign(status)` (migration `20261012150000_boards_indexes`, renamed like the others).
