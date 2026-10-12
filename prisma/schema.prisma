@@ -178,6 +178,18 @@ model CostEntry {
   createdAt  DateTime   @default(now())
 }
 
+// Versioned agent persona. The latest version per role is active; a restore copies an old version as a new one.
+model AgentProfile {
+  id        String   @id @default(cuid())
+  role      String
+  version   Int
+  persona   Json
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([role, version])
+}
+
 model PriceBook {
   id            String   @id @default(cuid())
   provider      String

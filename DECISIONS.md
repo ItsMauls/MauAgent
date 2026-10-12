@@ -59,3 +59,25 @@ Gaps vs PRD F10/F13:
 - **"Log" = Step history per campaignId + step** across all runs, with the full error and the Inngest run ID, at `/pipeline?campaign=…&step=…`. There is no separate log store; Step rows are the structured log.
 - **Polling:** `router.refresh()` every 10 s while the tab is visible (`AutoRefresh`). No websocket.
 - **Demo data:** `npm run db:seed:demo` (`prisma/seed-demo.ts`) creates `demo_kopi` (awaiting approval after one post-production revision) and `demo_bakery` (failed at the Creative Director after 4 attempts). It is idempotent with fixed IDs. Its videos are real ffmpeg clips uploaded to S3 when S3 is reachable. The demo campaigns have no live Inngest run, so decisions on them create a Decision row and send the event, but nothing advances.
+
+## Agent personas & memory: audit (12 Oct 2026)
+- **No `packages/`.** The brief's `packages/agents|workflows|db` map to `src/lib/agents`, `src/lib/workflows`, `prisma/`. Personas live in `src/lib/agents/personas/`.
+- **There is no `runAgent`.** Every LLM agent goes through `callLlm(role, schema, prompt)` (`src/lib/agents/index.ts`) → `generateObject`. Before this work it used one shared system prompt. LLM roles: accountManager, creativeDirector, artDirector, accountTeam, plus `router`. The Producer is deterministic; Videographer and Post-production have no LLM.
+- **Prompts** are inline strings in each agent function in `src/lib/agents/index.ts`.
+- **Costs:** LLM cost is stored on `Artifact.costUsd`, not `CostEntry`. Only Seedance writes `CostEntry` (`idemKey` unique; `reason` = `initial|revision|regenerate`). `campaignSpent`/`monthSpent` sum both tables, so a new `CostEntry` counts toward the caps without changes.
+- **Gaps that shape later stages:** `PUBLISHED` is unreachable (no F11) and `MetricSnapshot` doesn't exist. `CostEntry.campaignId` is required, but reflection spans campaigns. There is no `/costs` page.
+
+## Agent personas & memory: decisions
+- **English everywhere** (owner, 12 Oct 2026), overriding the brief's Indonesian UI and persona voices. Same rule as the dashboard menus.
+- **Schema lands per stage** (owner): each stage migrates only the tables it uses. Stage 1 = `AgentProfile` only.
+- **New inputs allowed beyond artifacts** (extends PRD §4): curated agent memory (Stage 2+) and deliberation summaries for the same campaign (Stage 4). Artifacts stay the contract between stages, and artifact Zod schemas are unchanged.
+- **Persona = tone and perspective only.** `personaSystem()` (`src/lib/agents/persona.ts`) builds the system prompt: agency context + persona + fixed guardrails (output must match the schema; client brief, brand kit and budget cap override the persona). The output format is still enforced by `generateObject` + the artifact schema.
+- **Defaults in JSON, active version in the DB.** `personas/<role>.json` (validated by `Persona` in `schemas.ts`) are the defaults. `AgentProfile(role, version)` holds every version, and the latest one is active. A restore copies an old version as a new one, the same pattern as artifact restore. There is no separate history table. `getPersona` is read on every LLM call, so a DB edit applies to the next run without a redeploy. If a role has no row (or an invalid one), the JSON default is used.
+- **Seed** creates v1 only for roles with no rows, so owner edits survive reseeding.
+- **`router` has no persona** (it is a classifier, not a team member). Producer, Videographer and Post-production personas are stored now but only speak in Stage 4 deliberations.
+- **Planned for later stages:**
+  - Episodic memory is written when a campaign reaches `APPROVED`, because `PUBLISHED` is not reachable yet.
+  - Post-metric reflection listens to `campaign/metrics.snapshot`, which nothing emits until metrics exist.
+  - Stage 3 makes `CostEntry.campaignId` nullable and adds `CostReason` `deliberation`/`reflection`.
+  - Memory retrieval uses tag filter + recency + confidence/pin score. No pgvector until memories per role reach the hundreds.
+- **Migration naming:** `20261012100000_agent_profile` was renamed so it sorts after the hand-named `20261012090000_approval_budget_gate`. The local `_prisma_migrations` row was updated to match.

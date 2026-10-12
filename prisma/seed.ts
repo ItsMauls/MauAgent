@@ -1,5 +1,6 @@
 // PLACEHOLDER prices — fill in from the official BytePlus ModelArk & Google AI pricing pages before use.
 import { PrismaClient } from "@prisma/client";
+import { DEFAULT_PERSONAS } from "../src/lib/agents/persona";
 
 const db = new PrismaClient();
 const effectiveFrom = new Date("2026-01-01");
@@ -20,6 +21,10 @@ async function main() {
       update: {},
     });
   await db.setting.upsert({ where: { id: "default" }, create: {}, update: {} });
+  // Persona v1 only for roles without a profile, so owner edits are never overwritten.
+  for (const [role, persona] of Object.entries(DEFAULT_PERSONAS))
+    if (!(await db.agentProfile.count({ where: { role } })))
+      await db.agentProfile.create({ data: { role, version: 1, persona, note: "Default persona" } });
 }
 
 main().finally(() => db.$disconnect());
