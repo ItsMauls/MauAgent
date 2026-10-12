@@ -116,6 +116,8 @@ model CreativeAsset {
   name        String
   description String
   imageUrls   String[]
+  // Talent locked by the owner = ready for the Content Creator.
+  lockedAt    DateTime?
   campaigns   Campaign[]
   createdAt   DateTime     @default(now())
 }

@@ -1,6 +1,6 @@
 // Boards roles: the single list the sidebar, /boards/[role] and the Boards cards read. Add a role = add an entry.
 
-export type RoleTab = "accounts" | "queue" | "schedule" | "library" | "talent";
+export type RoleTab = "accounts" | "ready" | "queue" | "schedule" | "library" | "talent";
 
 export type BoardRole = {
   slug: string;
@@ -15,7 +15,7 @@ export type BoardRole = {
 
 export const ROLES: BoardRole[] = [
   { slug: "socmed-specialist", label: "Socmed Specialist", agentRole: "socmedSpecialist", icon: "campaign", blurb: "Strategy, planning and connected accounts.", tabs: ["accounts"] },
-  { slug: "content-creator", label: "Content Creator", agentRole: "videographer", icon: "videocam", blurb: "Socmed Officer: prompt packages, shot execution, schedule and publishing.", tabs: ["queue", "schedule", "library"] },
+  { slug: "content-creator", label: "Content Creator", agentRole: "videographer", icon: "videocam", blurb: "Socmed Officer: prompt packages, shot execution, schedule and publishing.", tabs: ["ready", "queue", "schedule", "library"] },
   { slug: "talent-manager", label: "Talent Manager", agentRole: "talentManager", icon: "face", blurb: "Characters and talent sheets for the Content Creator.", tabs: ["talent"] },
   { slug: "account-manager", label: "Account Manager", agentRole: "accountManager", icon: "handshake", blurb: "Turns goals and raw ideas into an internal brief.", tabs: [] },
   { slug: "creative-director", label: "Creative Director", agentRole: "creativeDirector", icon: "lightbulb", blurb: "Three concepts, one pick, with reasons.", tabs: [] },

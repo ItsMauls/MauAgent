@@ -16,7 +16,7 @@ const DELIVERED = ["APPROVED", "PUBLISHED"] as const;
 
 export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<string, string | undefined>) => string }) {
   const r = await load(async () => {
-    const [snap, names, exp, delivered] = await Promise.all([
+    const [snap, names, exp, delivered, handoffs] = await Promise.all([
       boardSnapshot(),
       agentNames(),
       agentExperience(),
@@ -31,13 +31,25 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
           _count: { select: { shots: true, publishJobs: { where: { status: "published" } } } },
         },
       }),
+      // Hand-offs another agent finished for this one in the last 7 days (e.g. talent ready for the Content Creator).
+      db.agentTask.findMany({
+        where: { requestedByRole: { not: null }, status: "DONE", updatedAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, agentRole: true, requestedByRole: true, artifactId: true },
+      }),
     ]);
+    const results = await db.artifact.findMany({ where: { id: { in: handoffs.flatMap((h) => h.artifactId ?? []) } }, select: { id: true, payload: true } });
     return ROLES.map((role) => {
       const work = roleWork(role.agentRole, snap);
       const last = delivered.find((c) => c.artifacts.some((a) => a.agentRole === role.agentRole) || (role.agentRole === "videographer" && c._count.shots > 0));
       const revs = last ? last.decisions.filter((d) => revisedRole(d) === role.agentRole).length : 0;
+      const done = handoffs.filter((h) => h.requestedByRole === role.agentRole).map((h) => ({
+        id: h.id,
+        from: roleByAgent(h.agentRole)?.label ?? h.agentRole,
+        what: (results.find((a) => a.id === h.artifactId)?.payload as { name?: string } | undefined)?.name ?? "done",
+      }));
       return {
-        role, work, name: names[role.agentRole],
+        role, work, done, name: names[role.agentRole],
         level: (exp as Record<string, { level: string }>)[role.agentRole]?.level,
         last: last && {
           id: last.id,
@@ -58,7 +70,7 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
         </p>
       </div>
       <ul className="-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-2">
-        {r.data.map(({ role, work, name, level, last }) => {
+        {r.data.map(({ role, work, done, name, level, last }) => {
           const [label, cls] = STATE_PILL[work.state];
           return (
             <li key={role.slug} className="w-72 shrink-0 snap-start space-y-3 rounded-3xl border border-line bg-canvas p-4">
@@ -70,6 +82,12 @@ export async function TeamCard({ agent, qs }: { agent?: string; qs: (p: Record<s
                 </div>
                 <span className={`pill ${cls}`}>{label}</span>
               </div>
+
+              {done.length > 0 && (
+                <Link href={`/boards/${role.slug}?tab=ready`} role="status" className="block rounded-xl bg-ok-soft px-3 py-2 text-xs font-semibold text-emerald-800 hover:underline">
+                  <span className="material-symbols-outlined !text-[14px] align-[-2px]">notifications_active</span> {done[0].from}: {done[0].what} is ready{done.length > 1 && ` (+${done.length - 1})`}
+                </Link>
+              )}
 
               <div>
                 <p className="label !mb-1">Working on</p>

@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { ClientBrief } from "@/lib/agents/schemas";
 import { roleBySlug } from "@/lib/boards/roles";
 import { estimateTask, refIds, taskGate, TASKS } from "@/lib/boards/tasks";
+import { saveTaskResult } from "@/lib/workflows/agentTask";
 
 function taskDef(slug: string) {
   const role = roleBySlug(z.string().parse(slug));
@@ -21,7 +22,12 @@ function taskDef(slug: string) {
 export async function estimateTaskAction(slug: string, raw: unknown) {
   const { role, def } = taskDef(slug);
   const input = def.input.parse(raw);
-  const refs = await db.artifact.findMany({ where: { id: { in: refIds(input) } }, select: { payload: true } });
+  // Referenced artifacts, or for a campaign pick (QC) the latest output of each role in that campaign.
+  const ids = refIds(input);
+  const refs = await db.artifact.findMany({
+    where: { OR: [{ id: { in: ids } }, { campaignId: { in: ids } }] },
+    orderBy: { version: "desc" }, distinct: ["campaignId", "agentRole"], select: { payload: true },
+  });
   const estUsd = await estimateTask(role.agentRole, input, refs.reduce((n, r) => n + JSON.stringify(r.payload).length, 0));
   const s = await getSettings();
   const gate = await taskGate(estUsd, Number(s.monthlyBudgetUsd));
@@ -102,4 +108,51 @@ export async function sendTaskToFlow(taskId: string, form: FormData) {
   });
   await inngest.send({ name: "campaign/brief.submitted", data: { campaignId: c.id, from: def.next } });
   redirect(`/campaigns/${c.id}`);
+}
+
+// ---------- Talent hand-off: Content Creator → Talent Manager ----------
+
+/** Content Creator asks the Talent Manager for a new talent, with the content that needs it. */
+export async function requestTalent(form: FormData) {
+  const input = z.object({
+    request: z.string().trim().min(1).max(1500),
+    campaignId: z.string().min(1).optional(),
+  }).parse({ request: form.get("request"), campaignId: form.get("campaignId") || undefined });
+  const c = input.campaignId ? await db.campaign.findUnique({ where: { id: input.campaignId }, select: { clientBrief: true } }) : null;
+  await db.agentTask.create({
+    data: {
+      agentRole: "talentManager", status: "WAITING", requestedByRole: "videographer",
+      input: { ...input, ...(c && { product: (c.clientBrief as { product?: string }).product }) },
+    },
+  });
+  revalidatePath("/boards", "layout");
+}
+
+/** Talent Manager answers a request with a new or existing character. It is ready once the owner locks it. */
+export async function fulfilTalent(taskId: string, form: FormData) {
+  const t = await db.agentTask.findUniqueOrThrow({ where: { id: z.string().parse(taskId) } });
+  if (t.agentRole !== "talentManager" || t.status !== "WAITING") throw new Error("This request is not open");
+  const existing = z.string().optional().parse(form.get("creativeAssetId") || undefined);
+  const id = existing ?? (await db.creativeAsset.create({
+    data: {
+      kind: "character",
+      name: z.string().trim().min(1).max(80).parse(form.get("name")),
+      description: z.string().trim().min(1).max(1500).parse(form.get("description")),
+      imageUrls: z.array(z.url({ protocol: /^https?$/ })).max(6).parse(String(form.get("imageUrls") ?? "").split("\n").map((s) => s.trim()).filter(Boolean)),
+    },
+  })).id;
+  await db.agentTask.update({ where: { id: t.id }, data: { input: { ...(t.input as object), creativeAssetId: id } } });
+  revalidatePath("/boards", "layout");
+}
+
+/** Owner locks (or unlocks) a talent. Locking completes the requests it answers: the hand-off result is recorded. */
+export async function setTalentLock(form: FormData) {
+  const id = z.string().min(1).parse(form.get("id"));
+  const lock = form.get("lock") === "1";
+  const a = await db.creativeAsset.update({ where: { id }, data: { lockedAt: lock ? new Date() : null } });
+  if (lock) {
+    const open = await db.agentTask.findMany({ where: { agentRole: "talentManager", status: "WAITING", input: { path: ["creativeAssetId"], equals: id } } });
+    for (const t of open) await saveTaskResult(t.id, "talentManager", { creativeAssetId: a.id, name: a.name, description: a.description, imageUrls: a.imageUrls }, 0);
+  }
+  revalidatePath("/boards", "layout");
 }

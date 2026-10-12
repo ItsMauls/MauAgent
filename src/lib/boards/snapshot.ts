@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { DEFAULT_PERSONAS, isAgentRole } from "@/lib/agents/persona";
 import { Persona } from "@/lib/agents/schemas";
 import { ROLES, roleByAgent } from "./roles";
-import { taskTitle } from "./tasks";
-import { GATE_OWNER, roleWork, type Snapshot } from "./status";
+import { GATE_OWNER, roleWork, taskTitle, type Snapshot } from "./status";
 
 const product = (brief: unknown, id: string) => (brief as { product?: string }).product ?? id;
 

@@ -105,3 +105,14 @@ test("task inputs are validated and the form schema exposes artifact pickers", (
   assert.equal(js.properties.characterIds.library, "character");
   assert.ok(js.required.includes("creativeBriefId"));
 });
+
+test("every role workspace with a task maps to the table's output; QC and post-production pick a campaign", () => {
+  assert.deepEqual(Object.keys(TASKS).sort(), ["accountManager", "accountTeam", "artDirector", "creativeDirector", "postProduction", "producer", "videographer"]);
+  for (const r of ["accountTeam", "postProduction"]) {
+    const js = z.toJSONSchema(TASKS[r].input, { io: "input" }) as { properties: Record<string, { ref?: string }> };
+    assert.equal(js.properties.campaignId.ref, "campaign");
+    assert.equal(TASKS[r].next, undefined); // their output does not seed a new campaign
+  }
+  assert.equal(TASKS.accountTeam.llm, true);
+  assert.equal(TASKS.postProduction.llm, false);
+});
