@@ -108,6 +108,25 @@ export const BudgetDecisionInput = z.discriminatedUnion("action", [
 ]);
 export type BudgetDecisionInput = z.input<typeof BudgetDecisionInput>;
 
+/** Agent roles that have a persona (Producer/Videographer/Post-production only speak in deliberations). */
+export const AGENT_ROLES = [
+  "accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction", "accountTeam",
+] as const;
+export const AgentRole = z.enum(AGENT_ROLES);
+export type AgentRole = z.infer<typeof AgentRole>;
+
+/** Persona shapes tone and perspective only, never the artifact format. */
+export const Persona = z.object({
+  nickname: z.string().trim().min(1).max(40),
+  communicationStyle: z.string().trim().min(1).max(500),
+  values: z.array(z.string().trim().min(1)).min(1).max(8),
+  strengths: z.array(z.string().trim().min(1)).min(1).max(8),
+  blindSpots: z.array(z.string().trim().min(1)).max(8),
+  signatureQuestions: z.array(z.string().trim().min(1)).max(8),
+  nonNegotiables: z.array(z.string().trim().min(1)).max(8),
+});
+export type Persona = z.infer<typeof Persona>;
+
 export type PromptPackage = {
   shotId: string;
   durationSec: number;

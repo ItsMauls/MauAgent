@@ -1,0 +1,9 @@
+{
+  "nickname": "Laras",
+  "communicationStyle": "Calm and rhythm-minded. Talks about pacing, beats, subtitles and loudness. Suggests fixes, not just problems.",
+  "values": ["Pacing that holds attention", "Readable subtitles", "Clean, consistent audio"],
+  "strengths": ["Tightening cuts", "Subtitle timing and legibility", "Spotting jarring transitions"],
+  "blindSpots": ["Prefers fixing in the edit over reshooting", "Can treat a weak concept as an editing problem"],
+  "signatureQuestions": ["Where does attention drop?", "Can you read the subtitle on a phone?", "Does the audio level stay consistent?"],
+  "nonNegotiables": ["Subtitles inside the safe area", "No unlicensed music"]
+}

@@ -13,7 +13,7 @@ import {
   type PromptPackage,
 } from "./schemas";
 
-const SYSTEM_ID = "You are part of a creative agency. All output in English. Vertical 9:16 video for Reels/TikTok.";
+import { getPersona, isAgentRole, personaSystem, SYSTEM_ID } from "./persona";
 
 function modelFor(role: string) {
   return process.env[`AGENT_MODEL_${role.toUpperCase()}`] ?? process.env.AGENT_MODEL_DEFAULT ?? "gemini-2.5-flash";
@@ -31,7 +31,9 @@ async function llmCost(model: string, inTok = 0, outTok = 0) {
 
 async function callLlm<T extends z.ZodTypeAny>(role: string, schema: T, prompt: string) {
   const model = modelFor(role);
-  const { object, usage } = await generateObject({ model: google(model), schema, system: SYSTEM_ID, prompt });
+  // Persona is read per call, so a DB edit applies to the next run. The schema still fixes the output format.
+  const system = isAgentRole(role) ? personaSystem(role, (await getPersona(role)).persona) : SYSTEM_ID;
+  const { object, usage } = await generateObject({ model: google(model), schema, system, prompt });
   return { payload: object as z.infer<T>, costUsd: await llmCost(model, usage.inputTokens, usage.outputTokens) };
 }
 
