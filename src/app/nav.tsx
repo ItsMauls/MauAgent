@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ROLES } from "@/lib/boards/roles";
+import type { AgentState } from "@/lib/boards/status";
 
 type Item = { href: string; label: string; icon: string; children?: Item[] };
 
@@ -20,19 +22,35 @@ const groups: { title: string | null; items: Item[] }[] = [
         ],
       },
       { href: "/brief", label: "Briefs", icon: "auto_awesome" },
-      { href: "/creator", label: "AI Content Creator", icon: "palette" },
+    ],
+  },
+  {
+    title: "Boards",
+    items: [
+      {
+        href: "/boards",
+        label: "Boards",
+        icon: "dashboard",
+        children: ROLES.map((r) => ({ href: `/boards/${r.slug}`, label: r.label, icon: r.icon })),
+      },
     ],
   },
 ];
+
+export type RoleBadge = { state: AgentState; active: number };
+const DOT: Record<AgentState, string> = { busy: "bg-ok", waiting: "bg-amber-400", idle: "bg-ink-3" };
 // Accounts, Settings and Log out live in the account menu in the top bar (layout.tsx).
 
-export function NavLinks({ approvalCount }: { approvalCount: number }) {
+export function NavLinks({ approvalCount, roles = {} }: { approvalCount: number; roles?: Record<string, RoleBadge> }) {
   const path = usePathname();
   const isActive = (href: string) =>
-    href === "/" ? path === "/" || (path.startsWith("/campaigns/") && !path.startsWith("/campaigns/workflow")) : path.startsWith(href);
+    href === "/" ? path === "/" || (path.startsWith("/campaigns/") && !path.startsWith("/campaigns/workflow"))
+      : href === "/boards" ? path === "/boards"
+        : path.startsWith(href);
 
   const link = (i: Item, child = false) => {
     const active = isActive(i.href);
+    const badge = roles[i.href.replace("/boards/", "")];
     return (
       <Link
         key={i.href}
@@ -44,6 +62,12 @@ export function NavLinks({ approvalCount }: { approvalCount: number }) {
       >
         <span className="material-symbols-outlined">{i.icon}</span>
         {i.label}
+        {badge && (
+          <span className="ml-auto flex items-center gap-1.5" aria-label={`${badge.state}, ${badge.active} active`}>
+            {badge.active > 0 && <span className={`text-[11px] font-bold ${active ? "text-white" : "text-ink-2"}`}>{badge.active}</span>}
+            <span className={`h-2 w-2 rounded-full ${DOT[badge.state]}`} />
+          </span>
+        )}
         {i.href === "/approval" && approvalCount > 0 && (
           <span aria-label={`${approvalCount} waiting`} className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? "bg-white text-brand" : "bg-amber-soft text-amber-800"}`}>
             {approvalCount}

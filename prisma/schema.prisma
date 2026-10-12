@@ -67,6 +67,16 @@ model Setting {
   // Agent memory: off = agents run without recall and no episodes are written.
   memoryEnabled      Boolean     @default(true)
   memoryTokenBudget  Int         @default(800)
+  // Owner's time zone: Boards agenda days and dates.
+  timezone           String      @default("Asia/Jakarta")
+}
+
+// Cached result of the free health checks (integrations-health job). Boards reads this, never the provider.
+model IntegrationStatus {
+  id        String   @id // registry id in src/lib/integrations.ts
+  ok        Boolean
+  summary   String?
+  checkedAt DateTime @default(now())
 }
 
 model Campaign {
