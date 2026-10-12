@@ -108,9 +108,10 @@ export const campaignPipeline = inngest.createFunction(
 
     try {
       // vidIQ Trend Scout arrives in Phase 2; no trend signals for now.
-      const internal = (await agent("accountManager", () => accountManager(brief))) as InternalBrief;
-      const creative = (await agent("creativeDirector", () => creativeDirector(internal, noteFor("creativeDirector")))) as CreativeBrief;
-      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector")))) as VisualDirection;
+      const mem = { runId, campaignId, brief };
+      const internal = (await agent("accountManager", () => accountManager(brief, [], mem))) as InternalBrief;
+      const creative = (await agent("creativeDirector", () => creativeDirector(internal, noteFor("creativeDirector"), mem))) as CreativeBrief;
+      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector"), mem))) as VisualDirection;
 
       const plan: ProductionPlan = runs("producer")
         ? await step.run("producer", () =>
@@ -266,7 +267,7 @@ export const campaignPipeline = inngest.createFunction(
       // ---- Account Team QC → approval package ----
       await step.run("accountTeam", () =>
         tracked(runId, "accountTeam", attempt, async () => {
-          const { payload, costUsd } = await accountTeam(brief, creative, visual);
+          const { payload, costUsd } = await accountTeam(brief, creative, visual, mem);
           await saveArtifact(campaignId, "accountTeam", payload, costUsd, runId);
           const pkg = { ...payload, costSoFar: await campaignSpent(campaignId) };
           await setStatus(campaignId, "AWAITING_APPROVAL", { approvalPackage: pkg });
@@ -320,6 +321,8 @@ export const campaignPipeline = inngest.createFunction(
         await setStatus(campaignId, status);
         await db.run.update({ where: { id: runId }, data: { status: "done", endedAt: new Date() } });
       });
+      // Episodic memory is written by its own function, so a memory failure never touches the campaign.
+      if (d?.type === "approve") await step.sendEvent("approved", { name: "campaign/approved", data: { campaignId } });
     } catch (e) {
       // Permanent failure after retries are exhausted. NonRetriable/step errors are rethrown after the status is recorded.
       await step.run("mark-failed", async () => {
