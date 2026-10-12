@@ -14,10 +14,11 @@ export async function saveTaskResult(taskId: string, role: string, payload: unkn
   });
 }
 
-export function taskCtx(taskId: string, settings: TaskCtx["settings"]): TaskCtx {
+export function taskCtx(taskId: string, settings: TaskCtx["settings"], attempt = 1): TaskCtx {
   return {
     taskId,
     settings,
+    llm: { idemKey: `task:${taskId}:${attempt}`, step: `task:${taskId}` },
     artifact: async (id, role, schema) => schema.parse((await db.artifact.findFirstOrThrow({ where: { id, agentRole: role } })).payload),
     kit: (ids) => (ids.length ? db.creativeAsset.findMany({ where: { id: { in: ids } }, select: { kind: true, name: true, description: true, imageUrls: true } }) : Promise.resolve([])),
   };
@@ -43,9 +44,9 @@ export const agentTask = inngest.createFunction(
       execute: async (role, input) => {
         const def = TASKS[role];
         if (!def) throw new Error(`No direct task for ${role}`);
-        const s = await getSettings();
+        const [s, t] = await Promise.all([getSettings(), db.agentTask.findUniqueOrThrow({ where: { id: taskId }, select: { attempt: true } })]);
         const settings = { campaignBudgetUsd: Number(s.campaignBudgetUsd), defaultVideoSource: s.defaultVideoSource };
-        return def.run(def.input.parse(input), taskCtx(taskId, settings));
+        return def.run(def.input.parse(input), taskCtx(taskId, settings, t.attempt));
       },
       save: async (out) => {
         const t = await db.agentTask.findUniqueOrThrow({ where: { id: taskId }, select: { agentRole: true } });

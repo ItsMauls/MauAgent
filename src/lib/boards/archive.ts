@@ -13,7 +13,7 @@ export const ARCHIVE_TYPES = {
   feedback: "Feedback",
 } as const;
 export type ArchiveType = keyof typeof ARCHIVE_TYPES;
-export const PAGE_SIZE = 6;
+export const PAGE_SIZE = 3;
 
 /**
  * Agent roles that produce each kind of item. "any" = every role can appear, and the section's query filters by role

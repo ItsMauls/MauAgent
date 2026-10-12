@@ -2,12 +2,17 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { generateCharacterViews } from "@/lib/ai/image";
 import { db } from "@/lib/db";
+import { ASSET_FIELDS, IMAGE_VIEWS } from "@/lib/creativeFields";
 import { inngest } from "@/lib/inngest";
 import { z } from "zod";
 import { BudgetDecisionInput, ClientBrief, DecisionInput, VideoSource, type PromptPackage } from "@/lib/agents/schemas";
 import { saveArtifact } from "@/lib/agents";
 import { presignPut } from "@/lib/s3";
+import { uploadImage } from "@/lib/cloudinary";
+import { syncBufferAccounts } from "@/lib/bufferAccounts";
 import { recordAsset } from "@/lib/assets";
 import { campaignSpent, estimateRegenerate, videoPricePerSec } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
@@ -60,7 +65,13 @@ export async function createCampaign(form: FormData) {
       creativeAssets: { connect: form.getAll("creativeAssetIds").map((id) => ({ id: String(id) })) },
     },
   });
-  await inngest.send({ name: "campaign/brief.submitted", data: { campaignId: c.id } });
+  try {
+    await inngest.send({ name: "campaign/brief.submitted", data: { campaignId: c.id } });
+  } catch (e) {
+    // Inngest unreachable: do not leave the campaign sitting at "not started".
+    await db.campaign.update({ where: { id: c.id }, data: { status: "FAILED" } });
+    console.error("[createCampaign] inngest.send failed", e);
+  }
   redirect(`/campaigns/${c.id}`);
 }
 
@@ -135,7 +146,7 @@ export async function budgetDecision(campaignId: string, input: BudgetDecisionIn
 }
 
 const AccountInput = z.object({
-  publisher: z.enum(["instagram_graph", "tiktok_inbox", "orshot"]),
+  publisher: z.enum(["instagram_graph", "tiktok_inbox", "orshot", "buffer"]),
   brandKitId: z.string().min(1).nullable(),
   accountType: z.enum(["BUSINESS", "CREATOR", "MEDIA_CREATOR"]).nullable(),
   timezone: z.string().refine((tz) => Intl.supportedValuesOf("timeZone").includes(tz) || tz === "UTC", "Unknown time zone"),
@@ -198,18 +209,37 @@ const CreativeAssetInput = z.object({
   kind: z.enum(["character", "location", "style"]),
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().min(1).max(1500),
-  imageUrls: z.array(z.url({ protocol: /^https?$/ })).max(6),
+  imageUrls: z.array(z.url({ protocol: /^https$/ })).max(12),
 });
+
+/** Uploads the filled view slots (img:<view>) to Cloudinary and returns their URLs (tagged ?v=<view>), in view order. */
+async function uploadViews(kind: keyof typeof IMAGE_VIEWS, form: FormData) {
+  const urls: string[] = [];
+  for (const v of IMAGE_VIEWS[kind]) {
+    const file = form.get(`img:${v}`);
+    if (!(file instanceof File) || !file.size) continue;
+    if (!file.type.startsWith("image/") || file.size > 8_000_000) throw new Error(`${v}: images only, max 8 MB`);
+    urls.push(`${await uploadImage(file)}?v=${encodeURIComponent(v)}`);
+  }
+  return urls;
+}
 
 /** AI Content Creator: add a character, location or video style to the library. */
 export async function saveCreativeAsset(form: FormData) {
+  const kind = CreativeAssetInput.shape.kind.parse(form.get("kind"));
+  const lines = ASSET_FIELDS[kind].map((x) => [x.label, form.getAll(`f_${kind}_${x.key}`).map(String).join(", ")]).filter(([, v]) => v).map(([l, v]) => `${l}: ${v}`);
+  const notes = String(form.get("description") ?? "").trim();
   const data = CreativeAssetInput.parse({
-    kind: form.get("kind"),
+    kind,
     name: form.get("name"),
-    description: form.get("description"),
-    imageUrls: String(form.get("imageUrls") ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
+    description: [...lines, notes].filter(Boolean).join("\n"),
+    imageUrls: await uploadViews(kind, form),
   });
-  await db.creativeAsset.create({ data });
+  const campaignIds = form.getAll("campaignId").map(String).filter(Boolean);
+  const asset = await db.creativeAsset.create({ data: { ...data, campaigns: { connect: campaignIds.map((id) => ({ id })) } } });
+  // Characters get a generated turnaround for the views the owner did not upload; runs after the response.
+  if (kind === "character") after(() => generateCharacterViews(asset.id).catch((e) => console.error("character image generation failed:", e)));
+  campaignIds.forEach((id) => revalidatePath(`/campaigns/${id}`));
   revalidatePath("/boards", "layout");
 }
 
@@ -226,4 +256,55 @@ export async function linkCreativeAsset(form: FormData) {
   await db.creativeAsset.update({ where: { id }, data: { campaigns: { [op]: { id: campaignId } } } });
   revalidatePath("/boards", "layout");
   revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/** Accounts page: pull the channels linked in Buffer. */
+export async function syncBuffer() {
+  const r = await syncBufferAccounts();
+  revalidatePath("/accounts");
+  revalidatePath("/boards", "layout");
+  return r;
+}
+
+const PublishPlan = z.object({
+  campaignId: z.string().min(1),
+  accountIds: z.array(z.string().min(1)).min(1, "Pick at least one account"),
+  // now = post right away; schedule = at scheduledAt (ISO, must be in the future).
+  when: z.enum(["now", "schedule"]),
+  scheduledAt: z.iso.datetime().optional(),
+  caption: z.string().trim().max(2200).default(""),
+  hashtags: z.array(z.string().trim().min(1)).max(30).default([]),
+});
+
+/** Content Creator: pick the accounts and publish an approved campaign automatically now or at a set time. */
+export async function planPublish(input: z.input<typeof PublishPlan>) {
+  const d = PublishPlan.parse(input);
+  const at = d.when === "schedule" ? new Date(d.scheduledAt ?? "") : null;
+  if (at && !(at.getTime() > Date.now())) throw new Error("Pick a time in the future");
+  const c = await db.campaign.findUniqueOrThrow({ where: { id: d.campaignId } });
+  if (!c.finalCutKey || !["APPROVED", "PUBLISHED"].includes(c.status)) throw new Error("Only an approved campaign with a final cut can be published");
+  const accounts = await db.socialAccount.findMany({ where: { id: { in: d.accountIds }, active: true, publisher: "buffer" } });
+  if (accounts.length !== new Set(d.accountIds).size) throw new Error("Some accounts are inactive or not linked through Buffer");
+  const ids: string[] = [];
+  for (const a of accounts) {
+    const idemKey = `${d.campaignId}:${a.id}`;
+    if (await db.publishJob.findUnique({ where: { idemKey } })) throw new Error(`Already planned for @${a.handle}`);
+    const j = await db.publishJob.create({
+      data: {
+        campaignId: d.campaignId, socialAccountId: a.id, platform: a.platform, idemKey,
+        status: at ? "scheduled" : "draft", caption: d.caption || null, hashtags: d.hashtags, scheduledAt: at,
+      },
+    });
+    ids.push(j.id);
+  }
+  await inngest.send(ids.map((jobId) => ({ name: "publish/job", data: { jobId } })));
+  revalidatePath("/boards", "layout");
+  revalidatePath("/accounts");
+}
+
+/** Cancel a job that has not started yet; the sleeping Inngest run then skips it. */
+export async function cancelPublish(jobId: string) {
+  const { count } = await db.publishJob.updateMany({ where: { id: z.string().parse(jobId), status: { in: ["draft", "scheduled"], }, postId: null }, data: { status: "failed", error: "Cancelled" } });
+  if (!count) throw new Error("Already started; manage it in Buffer");
+  revalidatePath("/boards", "layout");
 }

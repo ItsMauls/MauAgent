@@ -47,28 +47,14 @@ export function budgetGate(o: { estUsd: number; spentUsd: number; capUsd: number
   return { blocked: reasons.length > 0, reasons, totalUsd: total, monthUsd: month };
 }
 
-const sum = (xs: { _sum: { usd?: unknown; costUsd?: unknown } }[]) =>
-  xs.reduce((a, x) => a + Number(x._sum.usd ?? x._sum.costUsd ?? 0), 0);
+// CostEntry is the single ledger (LLM, video, trend runs). Artifact.costUsd is only a display copy; older LLM cost was
+// backfilled into CostEntry by migration 20261012190000_ai_settings_trends, so summing both would count it twice.
+const usd = async (where: Parameters<typeof db.costEntry.aggregate>[0]["where"]) =>
+  Number((await db.costEntry.aggregate({ _sum: { usd: true }, where }))._sum.usd ?? 0);
 
-/** Spent = CostEntry (video etc.) + Artifact cost (LLM). */
-export async function campaignSpent(campaignId: string) {
-  return sum(
-    await Promise.all([
-      db.costEntry.aggregate({ _sum: { usd: true }, where: { campaignId } }),
-      db.artifact.aggregate({ _sum: { costUsd: true }, where: { campaignId } }),
-    ]),
-  );
-}
+export const campaignSpent = (campaignId: string) => usd({ campaignId });
 
-export async function monthSpent(now = new Date()) {
-  const gte = new Date(now.getFullYear(), now.getMonth(), 1);
-  return sum(
-    await Promise.all([
-      db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt: { gte } } }),
-      db.artifact.aggregate({ _sum: { costUsd: true }, where: { createdAt: { gte } } }),
-    ]),
-  );
-}
+export const monthSpent = (now = new Date()) => usd({ createdAt: { gte: new Date(now.getFullYear(), now.getMonth(), 1) } });
 
 /** Price per second of the draft video model (the one regenerate uses). */
 export async function videoPricePerSec(model: string) {

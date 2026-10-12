@@ -16,7 +16,7 @@ const TTL = 15 * 60; // presigned URLs are short-lived
 export const presignPut = (Key: string) =>
   getSignedUrl(s3, new PutObjectCommand({ Bucket, Key, ContentType: "video/mp4" }), { expiresIn: TTL });
 
-export const presignGet = (Key: string) => getSignedUrl(s3, new GetObjectCommand({ Bucket, Key }), { expiresIn: TTL });
+export const presignGet = (Key: string, expiresIn = TTL) => getSignedUrl(s3, new GetObjectCommand({ Bucket, Key }), { expiresIn });
 
 export async function download(Key: string, dest: string) {
   const { Body } = await s3.send(new GetObjectCommand({ Bucket, Key }));
@@ -32,3 +32,6 @@ export async function uploadFromUrl(Key: string, url: string) {
   if (!res.ok) throw new Error(`Failed to download ${url}: ${res.status}`);
   await s3.send(new PutObjectCommand({ Bucket, Key, Body: Buffer.from(await res.arrayBuffer()), ContentType: "video/mp4" }));
 }
+
+
+export const uploadBuffer = (Key: string, Body: Uint8Array, ContentType: string) => s3.send(new PutObjectCommand({ Bucket, Key, Body, ContentType }));

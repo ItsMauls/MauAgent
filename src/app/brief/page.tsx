@@ -75,7 +75,7 @@ export default async function BriefPage() {
   return (
     <div className="pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/" className="pill border-transparent bg-white text-ink-2 hover:text-ink">
+        <Link href="/campaigns" className="pill border-transparent bg-white text-ink-2 hover:text-ink">
           <span className="material-symbols-outlined !text-[16px]">arrow_back</span>Back to campaigns
         </Link>
         <span className="pill border-transparent bg-brand-soft uppercase tracking-wide text-brand">Multi-agent production cycle</span>

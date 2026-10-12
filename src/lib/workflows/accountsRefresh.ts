@@ -40,7 +40,7 @@ export const accountsRefresh = inngest.createFunction(
   async ({ event, step }) => {
     const { accountId } = z.object({ accountId: z.string().optional() }).parse(event.name === "accounts/refresh" ? event.data : {});
     const ids = await step.run("list-accounts", async () =>
-      (await db.socialAccount.findMany({ where: { active: true, ...(accountId && { id: accountId }) }, select: { id: true } })).map((a) => a.id),
+      (await db.socialAccount.findMany({ where: { active: true, publisher: { not: "buffer" }, ...(accountId && { id: accountId }) }, select: { id: true } })).map((a) => a.id),
     );
     const results = [];
     for (const id of ids) results.push(await step.run(`check-${id}`, () => checkAccount(id)));

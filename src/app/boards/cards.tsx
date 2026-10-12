@@ -5,6 +5,7 @@ import { integrationViews, STATE_LABEL, type IntegrationState } from "@/lib/inte
 import { addDays, agendaItems, countdown, dayKey, monthGrid, type AgendaKind } from "@/lib/boards/agenda";
 import type { AgentState } from "@/lib/boards/status";
 import { checkIntegrations } from "../actions";
+import { Modal } from "./modal";
 
 // ---------- shared bits ----------
 
@@ -99,7 +100,7 @@ export async function AgendaCard({ day: dayParam, tz, qs }: { day?: string; tz: 
   const label = new Date(`${day}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
   return (
-    <section aria-labelledby="agenda-h" className="card space-y-4 p-6">
+    <section aria-labelledby="agenda-h" className="card h-full space-y-3 p-5">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="label">{day === today ? "Today" : "Agenda"} · {tz}</p>
@@ -144,7 +145,7 @@ export async function AgendaCard({ day: dayParam, tz, qs }: { day?: string; tz: 
       {!items.length ? (
         <p className="rounded-2xl bg-canvas p-4 text-center text-sm text-ink-2">Nothing scheduled this day.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="max-h-36 space-y-1 overflow-y-auto">
           {items.map((i, n) => (
             <li key={n}>
               <Link href={i.href} className="flex items-center gap-3 rounded-2xl p-2 hover:bg-canvas">
@@ -185,14 +186,16 @@ export async function IntegrationsCard() {
       db.socialAccount.findMany({ select: ACCOUNT_PUBLIC_SELECT }),
       db.integrationStatus.findMany(),
     ]);
-    return integrationViews({ accounts, cache: Object.fromEntries(cache.map((c) => [c.id, c])), env: process.env });
+    // Background infrastructure the owner never manages here; its health checks still run (integrationsHealth).
+    const hidden = new Set(["openrouter", "s3", "apify"]);
+    return integrationViews({ accounts, cache: Object.fromEntries(cache.map((c) => [c.id, c])), env: process.env }).filter((v) => !hidden.has(v.id));
   });
   if (!r.ok) return <CardError title="Integrations" />;
   const views = r.data;
   const connected = views.filter((v) => v.state === "connected").length;
 
   return (
-    <section aria-labelledby="int-h" className="card space-y-4 p-6">
+    <section aria-labelledby="int-h" className="card h-full space-y-3 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 id="int-h" className="text-xl font-bold">Integrations</h2>
@@ -213,24 +216,24 @@ export async function IntegrationsCard() {
       <ul className="flex flex-wrap gap-3">
         {views.map((v) => (
           <li key={v.id}>
-            <details className="group relative">
-              <summary
-                aria-label={`${v.name}: ${STATE_LABEL[v.state]}`}
-                className={`flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-full ring-2 ${STATE_CLS[v.state]}`}
-              >
-                <span className="material-symbols-outlined">{v.icon}</span>
-                <span role="tooltip" className="pointer-events-none absolute -top-9 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white group-hover:block group-focus-within:block group-open:!hidden">
-                  {v.name}
-                </span>
-              </summary>
-              <div className="card absolute left-0 z-20 mt-2 w-64 space-y-2 p-4 text-sm">
-                <p className="font-bold">{v.name}</p>
-                <p><span className={`pill ring-0 ${STATE_CLS[v.state]}`}>{STATE_LABEL[v.state]}</span></p>
-                <p className="text-ink-2">{v.summary}</p>
-                {v.details.length > 0 && <ul className="space-y-1 text-xs text-ink-2">{v.details.map((d) => <li key={d}>{d}</li>)}</ul>}
-                <Link href={v.href} className="inline-block font-semibold text-brand hover:underline">Open settings</Link>
-              </div>
-            </details>
+            <Modal
+              title={v.name}
+              label={`${v.name}: ${STATE_LABEL[v.state]}`}
+              className={`group relative flex h-12 w-12 items-center justify-center rounded-full ring-2 ${STATE_CLS[v.state]}`}
+              trigger={
+                <>
+                  <span className="material-symbols-outlined">{v.icon}</span>
+                  <span role="tooltip" className="pointer-events-none absolute -top-9 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white group-hover:block group-focus-visible:block">
+                    {v.name}
+                  </span>
+                </>
+              }
+            >
+              <p><span className={`pill ring-0 ${STATE_CLS[v.state]}`}>{STATE_LABEL[v.state]}</span></p>
+              <p className="text-sm text-ink-2">{v.summary}</p>
+              {v.details.length > 0 && <ul className="space-y-1 text-sm text-ink-2">{v.details.map((d) => <li key={d}>{d}</li>)}</ul>}
+              <Link href={v.href} className="btn-soft">Open settings</Link>
+            </Modal>
           </li>
         ))}
       </ul>

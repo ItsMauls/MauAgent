@@ -1,5 +1,3 @@
-import { generateObject } from "ai";
-import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -15,30 +13,19 @@ import {
 
 import { getPersona, isAgentRole, personaSystem, SYSTEM_ID } from "./persona";
 import { recallMemory, type MemoryCtx } from "./memory";
+import { generateStructured, type CallCtx } from "@/lib/ai/generate";
 
-export function modelFor(role: string) {
-  return process.env[`AGENT_MODEL_${role.toUpperCase()}`] ?? process.env.AGENT_MODEL_DEFAULT ?? "gemini-2.5-flash";
-}
+export type { CallCtx };
 
-/** LLM cost from PriceBook (unit: "1M_input_tokens" / "1M_output_tokens"). No price = 0. */
-export async function llmCost(model: string, inTok = 0, outTok = 0) {
-  const rows = await db.priceBook.findMany({
-    where: { provider: "google", model, effectiveFrom: { lte: new Date() } },
-    orderBy: { effectiveFrom: "desc" },
-  });
-  const price = (unit: string) => Number(rows.find((r) => r.unit === unit)?.unitPrice ?? 0);
-  return (inTok / 1e6) * price("1M_input_tokens") + (outTok / 1e6) * price("1M_output_tokens");
-}
-
-async function callLlm<T extends z.ZodTypeAny>(role: string, schema: T, prompt: string, mem?: MemoryCtx) {
-  const model = modelFor(role);
+async function callLlm<T extends z.ZodTypeAny>(role: string, schema: T, prompt: string, mem?: MemoryCtx, ctx: CallCtx = {}) {
   // Persona is read per call, so a DB edit applies to the next run. The schema still fixes the output format.
   // Memory is recalled only inside a pipeline run (mem set), within the token budget from Settings.
   const system = isAgentRole(role)
     ? personaSystem(role, (await getPersona(role)).persona) + (mem ? await recallMemory(role, mem) : "")
     : SYSTEM_ID;
-  const { object, usage } = await generateObject({ model: google(model), schema, system, prompt });
-  return { payload: object as z.infer<T>, costUsd: await llmCost(model, usage.inputTokens, usage.outputTokens) };
+  // Model, effort, tokens, caps, key failover and cost logging live in generateStructured (src/lib/ai).
+  const { payload, costUsd } = await generateStructured(role, prompt, schema, { system, campaignId: mem?.campaignId, ...ctx });
+  return { payload: payload as z.infer<T>, costUsd };
 }
 
 export async function saveArtifact(campaignId: string, agentRole: string, payload: unknown, costUsd = 0, runId?: string) {
@@ -48,20 +35,21 @@ export async function saveArtifact(campaignId: string, agentRole: string, payloa
   });
 }
 
-export const accountManager = (brief: ClientBrief, trendRefs: string[] = [], mem?: MemoryCtx) =>
+export const accountManager = (brief: ClientBrief, trendRefs: string[] = [], mem?: MemoryCtx, ctx?: CallCtx) =>
   callLlm(
     "accountManager",
     InternalBrief,
-    `Role: Account Manager. Turn the client brief into an internal brief.
-Trend signals: ${trendRefs.length ? trendRefs.join("\n") : "(none yet)"}
+    `Role: Account Manager. Turn the client brief into an internal brief. Put the trend signals you use (their URLs) in trendRefs.
+Trend signals: ${trendRefs.length ? `\n${trendRefs.join("\n")}` : "(none yet)"}
 Client brief: ${JSON.stringify(brief)}`,
     mem,
+    ctx,
   );
 
 /** Client revision notes are appended to the prompt of the agent the revision is routed to. */
 const withNotes = (prompt: string, notes?: string) => (notes ? `${prompt}\nClient revision notes (must be addressed): ${notes}` : prompt);
 
-export const creativeDirector = (internal: InternalBrief, notes?: string, mem?: MemoryCtx) =>
+export const creativeDirector = (internal: InternalBrief, notes?: string, mem?: MemoryCtx, ctx?: CallCtx) =>
   callLlm(
     "creativeDirector",
     CreativeBrief,
@@ -71,6 +59,7 @@ Internal brief: ${JSON.stringify(internal)}`,
       notes,
     ),
     mem,
+    ctx,
   );
 
 type KitItem = { kind: string; name: string; description: string; imageUrls: string[] };
@@ -85,7 +74,7 @@ ${kit.map(line).join("\n")}
 Rules: build characterDescription from the kit characters word for word; set every shot's setting from the kit locations; if a style is given, start moodboardPrompts[0] with it and keep the whole video in that style; copy all refs into styleRefImageUrls.`;
 }
 
-export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string, mem?: MemoryCtx, kit: KitItem[] = []) =>
+export const artDirector = (creative: CreativeBrief, brief: ClientBrief, notes?: string, mem?: MemoryCtx, kit: KitItem[] = [], ctx?: CallCtx) =>
   callLlm(
     "artDirector",
     VisualDirection,
@@ -96,11 +85,12 @@ Product: ${brief.product}. Audience: ${brief.audience}.${creativeKitPrompt(kit)}
       notes,
     ),
     mem,
+    ctx,
   );
 
 // ponytail: text-only QC over the artifacts; switch to Gemini multimodal on the final cut when file upload is wired.
 /** Account Team QC (F9): captions, hashtags, brand-safety checklist, self score. */
-export const accountTeam = (brief: ClientBrief, creative: CreativeBrief, visual: VisualDirection, mem?: MemoryCtx) =>
+export const accountTeam = (brief: ClientBrief, creative: CreativeBrief, visual: VisualDirection, mem?: MemoryCtx, ctx?: CallCtx) =>
   callLlm(
     "accountTeam",
     ApprovalPackage,
@@ -110,15 +100,18 @@ Brief: ${JSON.stringify(brief)}
 Concept: ${JSON.stringify(creative)}
 Shot list: ${JSON.stringify(visual.shotList)}`,
     mem,
+    ctx,
   );
 
 /** Revision routing (F10): a small LLM picks which stage the client's note targets. */
-export const routeRevision = (notes: string) =>
+export const routeRevision = (notes: string, ctx?: CallCtx) =>
   callLlm(
     "router",
     z.object({ target: RevisionTarget }),
     `Classify this client revision note. creativeDirector = concept/idea/message/hook; artDirector = visuals/shots/look/characters; postProduction = edit/pacing/subtitles/music/timing.
 Note: ${notes}`,
+    undefined,
+    ctx,
   );
 
 export type PriceLookup = (model: string) => number; // USD per detik video

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
+import { presignGet } from "@/lib/s3";
 import { likePattern, workedOn } from "@/lib/boards/archive";
 import { OUTCOME, outcomeLabel } from "@/lib/boards/outcome";
 import { FeedbackForm, FeedbackList } from "./feedback";
@@ -9,7 +10,8 @@ import { roleByAgent, type BoardRole } from "@/lib/boards/roles";
 import { TASKS } from "@/lib/boards/tasks";
 import { taskTitle } from "@/lib/boards/status";
 import { formatDuration } from "@/lib/status";
-import { ChangedKeys, Empty } from "../campaigns/[id]/shots";
+import { AssetsTab, ChangedKeys, Empty, ShotsTab } from "../campaigns/[id]/shots";
+import { CancelPublishButton, PublishForm } from "../ui";
 import { fulfilTalent, requestTalent, sendTaskToFlow } from "./actions";
 import { RetryButton, TaskForm, type Option } from "./task-form";
 
@@ -99,9 +101,12 @@ async function TaskResult({ task }: { task: Awaited<ReturnType<typeof db.agentTa
   const artifact = task.artifactId ? await db.artifact.findUnique({ where: { id: task.artifactId } }) : null;
   const input = (task.input ?? {}) as { objective?: string; product?: string; audience?: string; platforms?: string[] };
   const s = await getSettings();
+  const pdfKey = (artifact?.payload as { pdfKey?: string } | null)?.pdfKey;
+  const pdfUrl = pdfKey ? await presignGet(pdfKey, 3600) : null;
   return (
     <section aria-label="Task output" className="space-y-3 rounded-2xl border border-line p-4">
       <h3 className="font-bold">Output</h3>
+      {pdfUrl && <a href={pdfUrl} target="_blank" rel="noreferrer" className="btn-soft">Download storyboard PDF</a>}
       {artifact ? (
         <pre className="max-h-96 overflow-auto rounded-xl bg-canvas p-3 text-xs">{JSON.stringify(artifact.payload, null, 2)}</pre>
       ) : (
@@ -220,37 +225,13 @@ export async function MemoryPanel({ role }: { role: BoardRole }) {
 
 /** Content Creator: locked talent (ready to use) and the "request new talent" hand-off to the Talent Manager. */
 export async function ReadyTalent() {
-  const [talent, campaigns, requests] = await Promise.all([
-    db.creativeAsset.findMany({ where: { kind: "character", lockedAt: { not: null } }, orderBy: { lockedAt: "desc" } }),
+  const [campaigns, requests] = await Promise.all([
     db.campaign.findMany({ where: { status: { notIn: ["REJECTED", "EXPIRED", "FAILED", "PUBLISHED"] } }, orderBy: { createdAt: "desc" }, take: 30, select: { id: true, clientBrief: true } }),
     db.agentTask.findMany({ where: { agentRole: "talentManager", requestedByRole: "videographer" }, orderBy: { createdAt: "desc" }, take: 10 }),
   ]);
   return (
-    <div className="grid gap-6 lg:grid-cols-12">
-      <div className="space-y-3 lg:col-span-7">
-        <h2 className="text-lg font-bold">Ready talent ({talent.length})</h2>
-        {!talent.length ? (
-          <p className="rounded-2xl bg-canvas p-6 text-center text-sm text-ink-2">No locked talent yet. Request one, or lock a character in the Talent Manager workspace.</p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {talent.map((a) => (
-              <li key={a.id} className="flex gap-3 rounded-2xl bg-canvas p-3">
-                {a.imageUrls[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.imageUrls[0]} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
-                ) : (
-                  <span aria-hidden className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white text-ink-3"><span className="material-symbols-outlined">face</span></span>
-                )}
-                <span className="min-w-0">
-                  <span className="block font-semibold">{a.name}</span>
-                  <span className="line-clamp-2 text-xs text-ink-2">{a.description}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="space-y-3 lg:col-span-5">
+    <div className="mb-8 grid gap-6 lg:grid-cols-12">
+      <div className="space-y-3 lg:col-span-12">
         <h2 className="text-lg font-bold">Request new talent</h2>
         <form action={requestTalent} className="space-y-3">
           <label className="block"><span className="label">What do you need?</span>
@@ -372,6 +353,84 @@ export async function ResultsPanel({ role }: { role: BoardRole }) {
         <FeedbackForm agentRole={role.agentRole} />
         <FeedbackList rows={feedback} />
       </section>
+    </div>
+  );
+}
+
+// ---------- Cross-role views ----------
+
+/** Shots waiting for footage across all campaigns: the same cards as the campaign Shots/Assets tabs. */
+export async function ExecutionQueue() {
+  const campaigns = await db.campaign.findMany({
+    where: { status: "AWAITING_VIDEO_UPLOAD" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, clientBrief: true, shots: { orderBy: { shotId: "asc" }, include: { assets: { orderBy: { version: "desc" } } } } },
+  });
+  if (!campaigns.length) return <Empty icon="task_alt" text="No shots waiting for footage." />;
+  return (
+    <div className="space-y-8">
+      {campaigns.map((c) => (
+        <article key={c.id} className="space-y-4">
+          <h2 className="text-lg font-bold">
+            <Link href={`/campaigns/${c.id}?tab=assets`} className="hover:underline">{(c.clientBrief as { product?: string }).product ?? c.id}</Link>
+          </h2>
+          <ShotsTab shots={c.shots.filter((s) => s.status !== "ready")} />
+          <AssetsTab shots={c.shots.filter((s) => s.status !== "ready")} />
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export async function Schedule() {
+  const [jobs, campaigns, accounts] = await Promise.all([
+    db.publishJob.findMany({
+      orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
+      take: 50,
+      select: { id: true, campaignId: true, platform: true, status: true, scheduledAt: true, postId: true, error: true, permalink: true, socialAccount: { select: { handle: true } } },
+    }),
+    db.campaign.findMany({
+      where: { status: { in: ["APPROVED", "PUBLISHED"] }, finalCutKey: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: { id: true, clientBrief: true, approvalPackage: true },
+    }),
+    db.socialAccount.findMany({ where: { active: true, publisher: "buffer" }, orderBy: [{ platform: "asc" }, { handle: "asc" }], select: { id: true, platform: true, handle: true } }),
+  ]);
+  return (
+    <div className="space-y-6">
+      {accounts.length && campaigns.length ? (
+        <PublishForm
+          accounts={accounts}
+          campaigns={campaigns.map((c) => ({
+            id: c.id,
+            label: (c.clientBrief as { product?: string }).product ?? c.id,
+            caption: (c.approvalPackage as { captionPerPlatform?: { caption: string }[] } | null)?.captionPerPlatform?.[0]?.caption ?? "",
+          }))}
+        />
+      ) : (
+        <Empty icon="schedule_send" text={accounts.length ? "No approved campaign with a final cut yet." : "No Buffer accounts yet. Use Sync from Buffer in Accounts (top-right menu)."} />
+      )}
+      {jobs.length > 0 && (
+        <table className="w-full text-left text-sm">
+          <thead className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2">
+            <tr><th className="py-2">Account</th><th>Status</th><th>Scheduled</th><th /></tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {jobs.map((j) => (
+              <tr key={j.id}>
+                <td className="py-2">{j.platform} @{j.socialAccount.handle}</td>
+                <td>{j.status}{j.error && <span className="block text-xs text-red-700">{j.error}</span>}</td>
+                <td>{j.scheduledAt?.toLocaleString("en-GB") ?? "—"}</td>
+                <td className="space-x-3 text-right">
+                  {(j.status === "draft" || j.status === "scheduled") && !j.postId && <CancelPublishButton jobId={j.id} />}
+                  <Link href={j.permalink ?? `/campaigns/${j.campaignId}?tab=publication`} className="font-semibold text-brand">Open</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

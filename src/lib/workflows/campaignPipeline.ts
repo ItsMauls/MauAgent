@@ -27,6 +27,7 @@ import { uploadFromUrl } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
 import { budgetGate, campaignSpent, latestPrice, monthSpent } from "@/lib/cost";
 import { allowedFrom } from "@/lib/status";
+import { topTrendRefs } from "@/lib/trends";
 import { decisionFeedback, qcFeedback, writeFeedback } from "@/lib/boards/feedback";
 import { NonRetriableError } from "inngest";
 import type { CampaignStatus, Prisma } from "@prisma/client";
@@ -55,16 +56,49 @@ const routedFeedback = async (row: Parameters<typeof decisionFeedback>[0]) => {
 };
 
 /** Record a Step in the DB (for the Pipeline dashboard) around the work of a step. */
-async function tracked<T>(runId: string, agentRole: string, attempt: number, fn: () => Promise<T>): Promise<T> {
+async function tracked<T>(campaignId: string, runId: string, agentRole: string, attempt: number, fn: () => Promise<T>): Promise<T> {
   const row = await db.step.create({ data: { runId, agentRole, status: "running", attempt: attempt + 1 } });
+  await say(campaignId, runId, agentRole, "start", "Working on it…");
   try {
     const out = await fn();
     await db.step.update({ where: { id: row.id }, data: { status: "done", endedAt: new Date() } });
+    await say(campaignId, runId, agentRole, "output", summarize(out));
+    const next = HANDOFF[agentRole];
+    if (next) await say(campaignId, runId, agentRole, "handoff", `Done. Passing this to ${next}.`, next);
     return out;
   } catch (e) {
     await db.step.update({ where: { id: row.id }, data: { status: "failed", endedAt: new Date(), error: String(e) } });
+    await say(campaignId, runId, agentRole, "error", String(e).slice(0, 400));
     throw e;
   }
+}
+
+const HANDOFF: Record<string, string> = {
+  accountManager: "creativeDirector",
+  creativeDirector: "artDirector",
+  artDirector: "producer",
+  producer: "videographer",
+  postProduction: "accountTeam",
+  accountTeam: "client",
+};
+
+/** Transcript line for the campaign page. A side record: a failure is logged and never fails the pipeline. */
+async function say(campaignId: string, runId: string, agentRole: string, kind: string, content: string, toRole?: string) {
+  try {
+    await db.agentMessage.create({ data: { campaignId, runId, agentRole, kind, content, toRole } });
+  } catch (e) {
+    console.error("[agent-message]", e);
+  }
+}
+
+/** First few short fields of an agent's output, e.g. "objective: …; hook: …". */
+function summarize(out: unknown) {
+  if (!out || typeof out !== "object") return "Finished.";
+  const parts = Object.entries(out as Record<string, unknown>)
+    .filter(([, v]) => typeof v === "string" || typeof v === "number")
+    .slice(0, 4)
+    .map(([k, v]) => `${k}: ${String(v).slice(0, 160)}`);
+  return parts.join("\n") || "Finished.";
 }
 
 async function allShotsReady(campaignId: string, shotIds: string[]) {
@@ -111,7 +145,7 @@ export const campaignPipeline = inngest.createFunction(
     const agent = <T>(role: (typeof STAGES)[number], fn: () => Promise<{ payload: T; costUsd: number }>) =>
       runs(role)
         ? step.run(role, () =>
-            tracked(runId, role, attempt, async () => {
+            tracked(campaignId, runId, role, attempt, async () => {
               const { payload, costUsd } = await fn();
               await saveArtifact(campaignId, role, payload, costUsd, runId);
               return payload;
@@ -124,15 +158,17 @@ export const campaignPipeline = inngest.createFunction(
     const noteFor = (role: string) => (role === from ? notes : undefined);
 
     try {
-      // vidIQ Trend Scout arrives in Phase 2; no trend signals for now.
       const mem = { runId, campaignId, brief };
-      const internal = (await agent("accountManager", () => accountManager(brief, [], mem))) as InternalBrief;
-      const creative = (await agent("creativeDirector", () => creativeDirector(internal, noteFor("creativeDirector"), mem))) as CreativeBrief;
-      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector"), mem, kit))) as VisualDirection;
+      // One idemKey per LLM stage per run: a retried step reuses the validated result instead of paying again.
+      const llm = (role: string) => ({ idemKey: `${runId}:${role}`, campaignId, reason });
+      const trends = runs("accountManager") ? await step.run("load-trends", () => topTrendRefs()) : [];
+      const internal = (await agent("accountManager", () => accountManager(brief, trends, mem, llm("accountManager")))) as InternalBrief;
+      const creative = (await agent("creativeDirector", () => creativeDirector(internal, noteFor("creativeDirector"), mem, llm("creativeDirector")))) as CreativeBrief;
+      const visual = (await agent("artDirector", () => artDirector(creative, brief, noteFor("artDirector"), mem, kit, llm("artDirector")))) as VisualDirection;
 
       const plan: ProductionPlan = runs("producer")
         ? await step.run("producer", () =>
-            tracked(runId, "producer", attempt, async () => {
+            tracked(campaignId, runId, "producer", attempt, async () => {
               const { model, resolution } = seedanceConfig("draft");
               const prices = await db.priceBook.findMany({ where: { provider: "byteplus", unit: "second" } });
               const plan = producer(visual, {
@@ -229,6 +265,7 @@ export const campaignPipeline = inngest.createFunction(
 
         await step.run(`seedance-save-${s.shotId}`, async () => {
           const shot = await db.shot.findUniqueOrThrow({ where: { campaignId_shotId: { campaignId, shotId: s.shotId } } });
+          await say(campaignId, runId, "videographer", videoUrl ? "output" : "error", `Shot ${s.shotId}: ${videoUrl ? "footage rendered." : "generation failed, slot left open for manual upload."}`);
           if (!videoUrl) return db.shot.update({ where: { id: shot.id }, data: { status: "failed" } });
           const key = `campaigns/${campaignId}/${s.shotId}/seedance-${taskId}.mp4`;
           await uploadFromUrl(key, videoUrl);
@@ -251,7 +288,7 @@ export const campaignPipeline = inngest.createFunction(
       // ---- Minimal post-production ----
       // ponytail: edit notes are not interpreted yet; a postProduction revision re-renders the same cut until F8 lands.
       await step.run("post-production", () =>
-        tracked(runId, "postProduction", attempt, async () => {
+        tracked(campaignId, runId, "postProduction", attempt, async () => {
           await setStatus(campaignId, "POST_PRODUCTION");
           const cut = await renderCut(campaignId, visual, `campaigns/${campaignId}/finalCut-${Date.now()}.mp4`);
           await db.campaign.update({ where: { id: campaignId }, data: { finalCutKey: cut.finalCut } });
@@ -261,8 +298,8 @@ export const campaignPipeline = inngest.createFunction(
 
       // ---- Account Team QC → approval package ----
       await step.run("accountTeam", () =>
-        tracked(runId, "accountTeam", attempt, async () => {
-          const { payload, costUsd } = await accountTeam(brief, creative, visual, mem);
+        tracked(campaignId, runId, "accountTeam", attempt, async () => {
+          const { payload, costUsd } = await accountTeam(brief, creative, visual, mem, llm("accountTeam"));
           const art = await saveArtifact(campaignId, "accountTeam", payload, costUsd, runId);
           await safeFeedback(() => writeFeedback(qcFeedback(campaignId, art.id, payload)));
           const pkg = { ...payload, costSoFar: await campaignSpent(campaignId) };
@@ -283,11 +320,11 @@ export const campaignPipeline = inngest.createFunction(
         | undefined;
 
       if (d?.type === "revise") {
-        const target = d.targetAgent ?? (await step.run("route-revision", async () => {
-          const { payload, costUsd } = await routeRevision(d.notes);
+        const target = d.targetAgent ?? (await step.run("route-revision", () => tracked(campaignId, runId, "router", attempt, async () => {
+          const { payload, costUsd } = await routeRevision(d.notes, { ...llm("router"), reason: "revision" });
           await saveArtifact(campaignId, "router", payload, costUsd, runId);
           return payload.target;
-        }));
+        })));
         await step.run("revise", async () => {
           if (d.decisionId) {
             const row = await db.decision.update({ where: { id: d.decisionId }, data: { targetAgent: target } });

@@ -4,15 +4,15 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { presignGet } from "@/lib/s3";
 import { ROLES, roleByAgent } from "@/lib/boards/roles";
-import { agentNames } from "@/lib/boards/snapshot";
 import { ARCHIVE_TYPES, archiveSections, delta, likePattern, pageOf, PAGE_SIZE, workedOn, type ArchiveType } from "@/lib/boards/archive";
 import { OUTCOME, outcomeLabel } from "@/lib/boards/outcome";
 import type { PromptPackage } from "@/lib/agents/schemas";
 import { load } from "./cards";
 import { FeedbackList } from "./feedback";
+import { Modal } from "./modal";
 
 type Qs = (p: Record<string, string | undefined>) => string;
-type Props = { q?: string; agent?: string; type?: string; sp: Record<string, string | undefined>; qs: Qs };
+type Props = { q?: string; agent?: string; sp: Record<string, string | undefined>; qs: Qs };
 type SectionProps = { q?: string; agent?: string; page: number; qs: Qs };
 
 const product = (b: unknown, id: string) => (b as { product?: string }).product ?? id;
@@ -27,54 +27,52 @@ async function matchCampaignIds(q: string) {
   return rows.map((r) => r.id);
 }
 
+// Left column = documents + reports, right column = media, like the reference layout.
+const LEFT: ArchiveType[] = ["campaigns", "prompts", "notes", "feedback", "reports"];
 
-export async function ArchiveCard({ q, agent, type, sp, qs }: Props) {
-  const names = await agentNames().catch(() => ({}) as Record<string, string>);
-  const sections = archiveSections(type, agent).filter((t) => !(q && t === "reports")); // reports are not searchable
+export async function ArchiveCard({ q, agent, sp, qs }: Props) {
+  const sections = archiveSections(undefined, agent).filter((t) => !(q && t === "reports")); // reports are not searchable
   const SECTION: Record<ArchiveType, (p: SectionProps) => Promise<React.ReactNode>> = {
     campaigns: Campaigns, reports: Reports, videos: Videos, talent: Talent, assets: Assets, prompts: Prompts, notes: Notes, feedback: Feedback,
   };
   const chip = (active: boolean) =>
-    `rounded-full px-3 py-1 text-xs font-semibold transition ${active ? "bg-brand text-white" : "bg-canvas text-ink-2 hover:bg-brand-soft"}`;
+    `inline-flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink-2 hover:bg-canvas"}`;
   // A new filter starts every section at page 1.
   const reset = Object.fromEntries(Object.keys(sp).filter((k) => k.startsWith("p_")).map((k) => [k, undefined]));
+  const col = (types: ArchiveType[]) =>
+    sections.filter((t) => types.includes(t)).map((t) => {
+      const Section = SECTION[t];
+      return (
+        <Suspense key={t} fallback={<div className="h-24 animate-pulse rounded-2xl bg-canvas" aria-label={`Loading ${ARCHIVE_TYPES[t]}`} />}>
+          <Section q={q} agent={agent} page={pageOf(sp[`p_${t}`])} qs={qs} />
+        </Suspense>
+      );
+    });
 
   return (
-    <section aria-labelledby="arc-h" className="card space-y-4 p-6">
-      <h2 id="arc-h" className="text-xl font-bold">Archive & sources</h2>
+    <section aria-labelledby="arc-h" className="card flex h-full flex-col gap-3 p-5">
+      <h2 id="arc-h" className="sr-only">Archive & sources</h2>
       <form action="/boards" role="search" className="relative">
         {Object.entries(sp).filter(([k, v]) => v && k !== "q" && !k.startsWith("p_")).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-        <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">search</span>
-        <input name="q" type="search" defaultValue={q} aria-label="Search sources" placeholder="Search sources…" className="input rounded-full pl-10" />
+        <span className="material-symbols-outlined pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-ink-3">search</span>
+        <input name="q" type="search" defaultValue={q} aria-label="Search sources" placeholder="Search for sources to chat with…" className="w-full bg-transparent py-1 pl-9 text-base outline-none placeholder:text-ink-3" />
       </form>
 
-      <div className="space-y-2">
-        <nav aria-label="Filter by agent" className="flex flex-wrap gap-1.5">
-          <Link href={qs({ ...reset, agent: undefined })} aria-current={!agent ? "true" : undefined} className={chip(!agent)}>All</Link>
-          {ROLES.map((r) => (
-            <Link key={r.slug} href={qs({ ...reset, agent: r.agentRole })} aria-current={agent === r.agentRole ? "true" : undefined} className={chip(agent === r.agentRole)}>
-              {names[r.agentRole] ?? r.label}
-            </Link>
-          ))}
-        </nav>
-        <nav aria-label="Filter by type" className="flex flex-wrap gap-1.5">
-          <Link href={qs({ ...reset, type: undefined })} aria-current={!type ? "true" : undefined} className={chip(!type)}>All types</Link>
-          {(Object.keys(ARCHIVE_TYPES) as ArchiveType[]).map((t) => (
-            <Link key={t} href={qs({ ...reset, type: t })} aria-current={type === t ? "true" : undefined} className={chip(type === t)}>{ARCHIVE_TYPES[t]}</Link>
-          ))}
-        </nav>
-      </div>
+      <nav aria-label="Filter by role" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <Link href={qs({ ...reset, agent: undefined })} scroll={false} aria-current={!agent ? "true" : undefined} className={chip(!agent)}>
+          <span className="material-symbols-outlined !text-[16px]">database</span>All
+        </Link>
+        {ROLES.map((r) => (
+          <Link key={r.slug} href={qs({ ...reset, agent: r.agentRole })} scroll={false} aria-current={agent === r.agentRole ? "true" : undefined} className={chip(agent === r.agentRole)}>
+            <span className="material-symbols-outlined !text-[16px]">{r.icon}</span>{r.label}
+          </Link>
+        ))}
+      </nav>
 
-      {!sections.length && <p className="rounded-2xl bg-canvas p-6 text-center text-sm text-ink-2">This agent produces nothing of this type.</p>}
-      <div className="space-y-6">
-        {sections.map((t) => {
-          const Section = SECTION[t];
-          return (
-            <Suspense key={t} fallback={<div className="h-24 animate-pulse rounded-2xl bg-canvas" aria-label={`Loading ${ARCHIVE_TYPES[t]}`} />}>
-              <Section q={q} agent={agent} page={pageOf(sp[`p_${t}`])} qs={qs} />
-            </Suspense>
-          );
-        })}
+      {!sections.length && <p className="rounded-2xl bg-canvas p-6 text-center text-sm text-ink-2">This role produces nothing to archive.</p>}
+      <div className="grid min-h-0 flex-1 content-start gap-x-8 gap-y-6 overflow-y-auto pr-1 md:grid-cols-[1.2fr_1fr]">
+        <div className="min-w-0 space-y-6">{col(LEFT)}</div>
+        <div className="min-w-0 space-y-6">{col(["videos", "talent", "assets"])}</div>
       </div>
     </section>
   );
@@ -82,17 +80,26 @@ export async function ArchiveCard({ q, agent, type, sp, qs }: Props) {
 
 function Section({ type, total, page, qs, children }: { type: ArchiveType; total: number; page: number; qs: Qs; children: React.ReactNode }) {
   const pages = Math.ceil(total / PAGE_SIZE);
+  const more = "font-semibold text-brand hover:underline";
   return (
     <section aria-label={ARCHIVE_TYPES[type]}>
-      <h3 className="mb-2 flex items-center gap-2 font-bold">
-        {ARCHIVE_TYPES[type]} <span className="text-sm font-normal text-ink-3">({total})</span>
+      <h3 className="mb-2 text-xs text-ink-2">
+        {ARCHIVE_TYPES[type]} ({total})
       </h3>
       {total === 0 ? <p className="rounded-2xl bg-canvas p-4 text-sm text-ink-2">Nothing found.</p> : children}
       {pages > 1 && (
-        <nav aria-label={`${ARCHIVE_TYPES[type]} pages`} className="mt-2 flex items-center justify-end gap-2 text-xs font-semibold">
-          {page > 0 && <Link href={qs({ [`p_${type}`]: page > 1 ? String(page - 1) : undefined })} className="rounded-full bg-canvas px-3 py-1 hover:bg-brand-soft">Previous</Link>}
-          <span className="text-ink-2">{page * PAGE_SIZE + 1}–{Math.min(total, (page + 1) * PAGE_SIZE)} of {total}</span>
-          {page + 1 < pages && <Link href={qs({ [`p_${type}`]: String(page + 1) })} className="rounded-full bg-canvas px-3 py-1 hover:bg-brand-soft">Show more</Link>}
+        <nav aria-label={`${ARCHIVE_TYPES[type]} pages`} className="mt-2 flex items-center gap-3 text-xs">
+          {page + 1 < pages && (
+            <Link href={qs({ [`p_${type}`]: String(page + 1) })} scroll={false} className={more}>
+              show more <span aria-hidden className="material-symbols-outlined !text-[14px] align-[-3px]">expand_more</span>
+            </Link>
+          )}
+          {page > 0 && (
+            <Link href={qs({ [`p_${type}`]: page > 1 ? String(page - 1) : undefined })} scroll={false} className={more}>
+              show less <span aria-hidden className="material-symbols-outlined !text-[14px] align-[-3px]">expand_less</span>
+            </Link>
+          )}
+          <span className="ml-auto text-ink-3">{page * PAGE_SIZE + 1}–{Math.min(total, (page + 1) * PAGE_SIZE)} of {total}</span>
         </nav>
       )}
     </section>
@@ -102,6 +109,67 @@ function Section({ type, total, page, qs, children }: { type: ArchiveType; total
 const SectionError = ({ type }: { type: ArchiveType }) => (
   <p role="alert" className="rounded-2xl bg-bad-soft p-3 text-sm text-red-800">{ARCHIVE_TYPES[type]} could not load.</p>
 );
+
+/** A file-like row (icon tile, title, subline) that opens its detail in a modal. */
+function DocRow({ icon, tone, title, sub, children }: { icon: string; tone: string; title: string; sub: string; children: React.ReactNode }) {
+  return (
+    <li>
+      <Modal
+        title={title}
+        className="flex w-full items-center gap-3 rounded-xl p-1.5 text-left hover:bg-canvas"
+        trigger={
+          <>
+            <span aria-hidden className={`flex h-10 w-9 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+              <span className="material-symbols-outlined !text-[20px]">{icon}</span>
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{title}</span>
+              <span className="block truncate text-xs text-ink-2">{sub}</span>
+            </span>
+          </>
+        }
+      >
+        {children}
+      </Modal>
+    </li>
+  );
+}
+
+/** Square thumbnail with a corner badge that opens its detail in a modal. */
+function Thumb({ title, badge, media, children }: { title: string; badge: string; media: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <li>
+      <Modal
+        title={title}
+        label={title}
+        className="relative block aspect-[4/5] w-full overflow-hidden rounded-xl bg-canvas"
+        trigger={
+          <>
+            {media}
+            <span className="absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate rounded-md bg-ink/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">{badge}</span>
+          </>
+        }
+      >
+        {children}
+      </Modal>
+    </li>
+  );
+}
+
+const Open = ({ href, children }: { href: string; children: React.ReactNode }) => <Link href={href} className="btn-soft">{children}</Link>;
+
+function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
+  return (
+    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+      {rows.map(([k, v]) => (
+        <div key={k} className="min-w-0 rounded-2xl bg-canvas p-3">
+          <dt className="label">{k}</dt>
+          <dd className="break-words font-semibold">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 // ---------- sections ----------
 
@@ -126,17 +194,17 @@ async function Campaigns({ q, agent, page, qs }: SectionProps) {
   const [total, rows] = r.data;
   return (
     <Section type="campaigns" total={total} page={page} qs={qs}>
-      <ul className="divide-y divide-line">
+      <ul>
         {rows.map((c) => {
           const [label, cls] = OUTCOME[outcomeLabel(c.status, c.decisions, agent)];
           const roles = [...c.artifacts.map((a) => a.agentRole), ...(c._count.shots ? ["videographer"] : [])].map((x) => roleByAgent(x)?.label).filter(Boolean);
+          const brief = Object.entries((c.clientBrief ?? {}) as Record<string, unknown>).filter(([, v]) => v != null && v !== "");
           return (
-            <li key={c.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-              <Link href={`/campaigns/${c.id}`} className="font-semibold hover:underline">{product(c.clientBrief, c.id)}</Link>
-              <span className={`pill ${cls}`}>{label}</span>
-              <span className="text-xs text-ink-2">{date(c.createdAt)}</span>
-              {roles.length > 0 && <span className="w-full truncate text-xs text-ink-3">{roles.join(" · ")}</span>}
-            </li>
+            <DocRow key={c.id} icon="folder_open" tone="bg-bad-soft text-red-700" title={product(c.clientBrief, c.id)} sub={`${label} · ${date(c.createdAt)}`}>
+              <p><span className={`pill ${cls}`}>{label}</span></p>
+              <Facts rows={[["Created", date(c.createdAt)], ["Shots", String(c._count.shots)], ["Agents", roles.join(" · ") || "—"], ...brief.map(([k, v]): [string, string] => [k, typeof v === "object" ? JSON.stringify(v) : String(v)])]} />
+              <Open href={`/campaigns/${c.id}`}>Open campaign</Open>
+            </DocRow>
           );
         })}
       </ul>
@@ -151,22 +219,21 @@ async function Reports({ agent, page, qs }: SectionProps) {
     const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const ranges = [{ gte: cur }, { gte: prev, lt: cur }];
     const withVideo = !agent || agent === "videographer";
-    // Spend = LLM cost on artifacts + video cost entries, the same sum as the budget caps (cost.ts).
+    // Spend = CostEntry, the same ledger as the budget caps (cost.ts). Video rows (Seedance) belong to the Content Creator.
+    const VIDEO = { provider: "byteplus" };
+    const byAgent: Prisma.CostEntryWhereInput = !agent ? {} : agent === "videographer" ? VIDEO : { agentRole: agent };
     const spend = async (createdAt: Prisma.DateTimeFilter, campaignIds?: string[]) => {
       const scope = campaignIds ? { campaignId: { in: campaignIds } } : {};
-      const [a, c] = await Promise.all([
-        db.artifact.aggregate({ _sum: { costUsd: true }, where: { createdAt, ...scope, ...(agent && { agentRole: agent }) } }),
-        withVideo ? db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt, ...scope } }) : null,
-      ]);
-      return Number(a._sum.costUsd ?? 0) + Number(c?._sum.usd ?? 0);
+      const c = await db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt, ...scope, ...byAgent } });
+      return Number(c._sum.usd ?? 0);
     };
     return Promise.all(ranges.map(async (createdAt) => {
       const delivered = await db.campaign.findMany({ where: { status: { in: ["APPROVED", "PUBLISHED"] }, createdAt, ...(agent && workedOn(agent)) }, select: { id: true } });
       const [total, onDelivered, regen, video] = await Promise.all([
         spend(createdAt),
         delivered.length ? spend({}, delivered.map((d) => d.id)) : 0,
-        withVideo ? db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt, reason: "regenerate" } }) : null,
-        withVideo ? db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt } }) : null,
+        withVideo ? db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt, reason: "regenerate", ...VIDEO } }) : null,
+        withVideo ? db.costEntry.aggregate({ _sum: { usd: true }, where: { createdAt, ...VIDEO } }) : null,
       ]);
       const videoUsd = Number(video?._sum.usd ?? 0);
       return {
@@ -179,35 +246,41 @@ async function Reports({ agent, page, qs }: SectionProps) {
   });
   if (!r.ok) return <SectionError type="reports" />;
   const [cur, prev] = r.data;
+  const usd = (n: number) => `US$${n.toFixed(2)}`;
   // Views/engagement need MetricSnapshot (not built). Impressions and plays are never shown (removed by Meta).
   const tiles = [
-    { label: agent ? "Spend by this agent" : "Spend this month", v: `US$${cur.spend.toFixed(2)}`, d: delta(cur.spend, prev.spend), upIsGood: false },
-    { label: "Cost per approved video", v: cur.delivered ? `US$${cur.perVideo.toFixed(2)}` : "—", d: delta(cur.perVideo, prev.perVideo), upIsGood: false },
-    { label: "Approved videos", v: String(cur.delivered), d: delta(cur.delivered, prev.delivered), upIsGood: true },
-    ...(!agent || agent === "videographer" ? [{ label: "Regenerate share of video cost", v: `${Math.round(cur.regenShare * 100)}%`, d: delta(cur.regenShare, prev.regenShare), upIsGood: false }] : []),
+    { label: agent ? "Spend by this agent" : "Spend this month", v: usd(cur.spend), pv: usd(prev.spend), d: delta(cur.spend, prev.spend), upIsGood: false },
+    { label: "Cost per approved video", v: cur.delivered ? usd(cur.perVideo) : "—", pv: prev.delivered ? usd(prev.perVideo) : "—", d: delta(cur.perVideo, prev.perVideo), upIsGood: false },
+    { label: "Approved videos", v: String(cur.delivered), pv: String(prev.delivered), d: delta(cur.delivered, prev.delivered), upIsGood: true },
+    ...(!agent || agent === "videographer" ? [{ label: "Regenerate share of video cost", v: `${Math.round(cur.regenShare * 100)}%`, pv: `${Math.round(prev.regenShare * 100)}%`, d: delta(cur.regenShare, prev.regenShare), upIsGood: false }] : []),
   ];
   return (
     <Section type="reports" total={tiles.length} page={page} qs={qs}>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {tiles.map((t) => {
           const good = t.d && t.d.dir !== "flat" && (t.d.dir === "up") === t.upIsGood;
+          const tone = !t.d || t.d.dir === "flat" ? "bg-canvas text-ink-3" : good ? "bg-ok-soft text-emerald-700" : "bg-bad-soft text-red-700";
+          const text = !t.d ? "No data last month" : t.d.dir === "flat" ? "Same as last month" : `${t.d.dir === "up" ? "+" : "-"}${t.d.pct == null ? "new" : `${Math.abs(t.d.pct)}%`} last month`;
           return (
-            <li key={t.label} className="rounded-2xl bg-canvas p-3">
-              <p className="text-xs text-ink-2">{t.label}</p>
-              <p className="text-lg font-bold">{t.v}</p>
-              <p className={`text-xs font-semibold ${!t.d || t.d.dir === "flat" ? "text-ink-3" : good ? "text-emerald-700" : "text-red-700"}`}>
-                {!t.d ? "No data last month" : t.d.dir === "flat" ? "Same as last month" : (
+            <li key={t.label}>
+              <Modal
+                title={t.label}
+                className="block h-full w-full rounded-xl border border-line p-3 text-left hover:bg-canvas"
+                trigger={
                   <>
-                    <span aria-hidden className="material-symbols-outlined !text-[14px] align-[-2px]">{t.d.dir === "up" ? "arrow_upward" : "arrow_downward"}</span>
-                    {t.d.pct == null ? " new vs last month" : ` ${Math.abs(t.d.pct)}% vs last month`}
+                    <span className="block text-lg font-bold leading-tight">{t.v}</span>
+                    <span className="block text-[11px] leading-tight text-ink-2">{t.label}</span>
+                    <span className={`mt-1.5 inline-block rounded px-1 py-0.5 text-[9px] font-bold uppercase ${tone}`}>{text}</span>
                   </>
-                )}
-              </p>
+                }
+              >
+                <Facts rows={[["This month", t.v], ["Last month", t.pv], ["Change", text]]} />
+                <p className="text-xs text-ink-3">Calendar months. Views and engagement appear once analytics metrics are pulled.</p>
+              </Modal>
             </li>
           );
         })}
       </ul>
-      <p className="mt-2 text-xs text-ink-3">Calendar months. Views and engagement appear once analytics metrics are pulled.</p>
     </Section>
   );
 }
@@ -243,16 +316,16 @@ async function Videos({ q, agent, page, qs }: SectionProps) {
   if (!r.ok) return <SectionError type="videos" />;
   return (
     <Section type="videos" total={r.data.total} page={page} qs={qs}>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <ul className="grid grid-cols-3 gap-2">
         {r.data.items.map((v) => (
-          <li key={v.id} className="space-y-1">
-            <video src={v.url} preload="metadata" muted aria-label={v.title} className="aspect-[9/16] w-full rounded-2xl bg-black object-cover" />
-            <p className="truncate text-xs font-semibold" title={v.title}>{v.title}</p>
-            <p className="flex justify-between text-xs text-ink-2">
-              {v.sub}
-              <a href={v.url} target="_blank" rel="noreferrer" className="font-semibold text-brand">Open</a>
-            </p>
-          </li>
+          <Thumb key={v.id} title={v.title} badge={v.sub} media={<video src={v.url} preload="metadata" muted aria-hidden className="h-full w-full object-cover" />}>
+            <video src={v.url} controls preload="none" className="mx-auto max-h-[60vh] rounded-2xl bg-black" />
+            <Facts rows={[["Type", v.sub], ["Created", date(v.at)]]} />
+            <div className="flex flex-wrap gap-2">
+              <a href={v.url} target="_blank" rel="noreferrer" className="btn-soft">Open file</a>
+              <Open href={`/campaigns/${v.campaignId}`}>Open campaign</Open>
+            </div>
+          </Thumb>
         ))}
       </ul>
     </Section>
@@ -272,22 +345,31 @@ async function library(kinds: ("character" | "location" | "style")[], q: string 
 
 function LibraryList({ rows, tab }: { rows: Awaited<ReturnType<typeof library>>[1]; tab: string }) {
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
+    <ul className="grid grid-cols-3 gap-2">
       {rows.map((a) => (
-        <li key={a.id}>
-          <Link href={tab} className="flex gap-3 rounded-2xl bg-canvas p-3 hover:bg-brand-soft">
-            {a.imageUrls[0] ? (
+        <Thumb
+          key={a.id}
+          title={a.name}
+          badge={a.name}
+          media={
+            a.imageUrls[0] ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={a.imageUrls[0]} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+              <img src={a.imageUrls[0]} alt="" className="h-full w-full object-cover" />
             ) : (
-              <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-ink-3"><span className="material-symbols-outlined">image</span></span>
-            )}
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{a.name}</span>
-              <span className="block text-xs text-ink-2">{a.kind} · {a._count.campaigns} campaign{a._count.campaigns === 1 ? "" : "s"}</span>
-            </span>
-          </Link>
-        </li>
+              <span aria-hidden className="flex h-full w-full items-center justify-center text-ink-3"><span className="material-symbols-outlined">image</span></span>
+            )
+          }
+        >
+          {a.imageUrls.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {a.imageUrls.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="h-28 w-28 rounded-xl object-cover" /></a>)}
+            </div>
+          )}
+          <p className="whitespace-pre-wrap text-sm text-ink-2">{a.description}</p>
+          <Facts rows={[["Type", a.kind], ["Linked campaigns", String(a._count.campaigns)]]} />
+          <Open href={tab}>Open in library</Open>
+        </Thumb>
       ))}
     </ul>
   );
@@ -324,16 +406,16 @@ async function Prompts({ q, page, qs }: SectionProps) {
   if (!r.ok) return <SectionError type="prompts" />;
   return (
     <Section type="prompts" total={r.data[0]} page={page} qs={qs}>
-      <ul className="space-y-2">
+      <ul>
         {r.data[1].map((s) => {
           const pkg = s.promptPackage as PromptPackage | null;
+          const title = `${product(s.campaign.clientBrief, s.campaignId)} · ${s.shotId}`;
           return (
-            <li key={s.id}>
-              <Link href={`/campaigns/${s.campaignId}?tab=shots`} className="block rounded-2xl bg-canvas p-3 text-sm hover:bg-brand-soft">
-                <span className="font-semibold">{product(s.campaign.clientBrief, s.campaignId)} · {s.shotId}</span>
-                {pkg && <span className="block truncate text-xs text-ink-2">{pkg.fileName} · {pkg.prompt.split("\n")[0]}</span>}
-              </Link>
-            </li>
+            <DocRow key={s.id} icon="description" tone="bg-brand-soft text-brand" title={title} sub={pkg ? `${pkg.fileName} · ${pkg.prompt.split("\n")[0]}` : "Prompt package"}>
+              {pkg && <Facts rows={[["File", pkg.fileName]]} />}
+              {pkg && <pre className="whitespace-pre-wrap rounded-2xl bg-canvas p-4 text-sm">{pkg.prompt}</pre>}
+              <Open href={`/campaigns/${s.campaignId}?tab=shots`}>Open shots</Open>
+            </DocRow>
           );
         })}
       </ul>
@@ -355,25 +437,21 @@ async function Notes({ q, agent, page, qs }: SectionProps) {
   if (!r.ok) return <SectionError type="notes" />;
   return (
     <Section type="notes" total={r.data[0]} page={page} qs={qs}>
-      <ul className="space-y-2">
-        {r.data[1].map((d) => (
-          <li key={d.id}>
-            <Link href={`/campaigns/${d.campaignId}?tab=decisions`} className="block rounded-2xl bg-canvas p-3 text-sm hover:bg-brand-soft">
-              <span className="flex flex-wrap gap-2 text-xs text-ink-2">
-                <span className="font-bold capitalize text-ink">{d.type}</span>
-                {d.targetAgent && <span>→ {roleByAgent(d.targetAgent)?.label ?? d.targetAgent}</span>}
-                <span>{product(d.campaign.clientBrief, d.campaignId)}</span>
-                <span className="ml-auto">{date(d.createdAt)}</span>
-              </span>
-              <span className="mt-1 line-clamp-2 block">{d.notes}</span>
-            </Link>
-          </li>
-        ))}
+      <ul>
+        {r.data[1].map((d) => {
+          const target = d.targetAgent ? (roleByAgent(d.targetAgent)?.label ?? d.targetAgent) : null;
+          return (
+            <DocRow key={d.id} icon="sticky_note_2" tone="bg-amber-soft text-amber-800" title={d.notes ?? d.type} sub={`${d.type}${target ? ` → ${target}` : ""} · ${product(d.campaign.clientBrief, d.campaignId)}`}>
+              <Facts rows={[["Decision", d.type], ["Aimed at", target ?? "—"], ["Campaign", product(d.campaign.clientBrief, d.campaignId)], ["Date", date(d.createdAt)]]} />
+              <p className="whitespace-pre-wrap rounded-2xl bg-canvas p-4 text-sm">{d.notes}</p>
+              <Open href={`/campaigns/${d.campaignId}?tab=decisions`}>Open decisions</Open>
+            </DocRow>
+          );
+        })}
       </ul>
     </Section>
   );
 }
-
 
 async function Feedback({ q, agent, page, qs }: SectionProps) {
   const r = await load(async () => {
@@ -384,5 +462,15 @@ async function Feedback({ q, agent, page, qs }: SectionProps) {
     ]);
   });
   if (!r.ok) return <SectionError type="feedback" />;
-  return <Section type="feedback" total={r.data[0]} page={page} qs={qs}><FeedbackList rows={r.data[1]} showAgent={!agent} /></Section>;
+  return (
+    <Section type="feedback" total={r.data[0]} page={page} qs={qs}>
+      <ul>
+        {r.data[1].map((f) => (
+          <DocRow key={f.id} icon={f.sentiment === "positive" ? "thumb_up" : f.sentiment === "negative" ? "thumb_down" : "remove"} tone="bg-ok-soft text-emerald-700" title={f.text} sub={`${roleByAgent(f.agentRole)?.label ?? f.agentRole} · ${date(f.createdAt)}`}>
+            <FeedbackList rows={[f]} showAgent />
+          </DocRow>
+        ))}
+      </ul>
+    </Section>
+  );
 }

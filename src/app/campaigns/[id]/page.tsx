@@ -7,6 +7,7 @@ import { DecisionButtons } from "../../ui";
 import { AssetsTab, ChangedKeys, Empty, ShotsTab } from "./shots";
 import { CampaignFeedback } from "../../boards/feedback";
 import { SourcePill, StatusPill } from "../../pills";
+import { LiveRefresh } from "./live";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,9 @@ const STEP_STYLE: Record<string, string> = {
   running: "border-blue-200 bg-brand-soft text-brand-dark",
   failed: "border-red-200 bg-bad-soft text-red-800",
 };
+
+/** Statuses where the pipeline is working, so the page polls. */
+const LIVE = ["DRAFTING", "POST_PRODUCTION", "REVISING", "REGENERATING", "PUBLISHING"];
 
 const TABS = [
   ["brief", "Brief"],
@@ -35,6 +39,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
   const c = await db.campaign.findUnique({
     where: { id },
     include: {
+      messages: { orderBy: { createdAt: "asc" } },
       runs: { orderBy: { startedAt: "desc" }, take: 1, include: { steps: { orderBy: { startedAt: "asc" } } } },
       artifacts: { orderBy: [{ agentRole: "asc" }, { version: "desc" }] },
       shots: { orderBy: { shotId: "asc" }, include: { assets: { orderBy: { version: "desc" } } } },
@@ -51,7 +56,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6 pt-2">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm font-semibold text-brand">
+      <Link href="/campaigns" className="inline-flex items-center gap-1 text-sm font-semibold text-brand">
         <span className="material-symbols-outlined !text-[18px]">arrow_back</span>Back to Campaign List
       </Link>
 
@@ -89,9 +94,40 @@ export default async function CampaignPage({ params, searchParams }: { params: P
               <p className="mt-1 text-xs">{s.status} · attempt {s.attempt}</p>
               {s.error && <p className="mt-1 text-xs text-red-700">{s.error.slice(0, 200)}</p>}
             </li>
-          )) ?? <li className="text-sm text-ink-2">Not started yet. Make sure the Inngest dev server is running.</li>}
+          ))}
+          {!steps?.length && (
+            <li className="text-sm text-ink-2">
+              {steps
+                ? "Run started, waiting for the first agent…"
+                : c.status === "FAILED"
+                  ? "The run could not be started. Start the Inngest dev server (npm run dev:all) and submit the brief again."
+                  : `Queued, waiting for Inngest (${Math.round((Date.now() - c.createdAt.getTime()) / 1000)}s). If this stays here, run npm run dev:all.`}
+            </li>
+          )}
         </ol>
       </section>
+
+      <section className="card p-8">
+        <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+          <span className="material-symbols-outlined text-brand">forum</span>Agent Sessions
+          {LIVE.includes(c.status) && <span className="pill border-blue-200 bg-brand-soft text-brand-dark">live</span>}
+        </h2>
+        {c.messages.length === 0 ? (
+          <p className="text-sm text-ink-2">No messages yet. Agents post here as they start, finish and hand work to each other.</p>
+        ) : (
+          <ol className="space-y-2">
+            {c.messages.map((m) => (
+              <li key={m.id} className={`rounded-2xl p-3 text-sm ${m.kind === "error" ? "bg-bad-soft text-red-800" : "bg-canvas"}`}>
+                <p className="text-xs font-semibold text-ink-2">
+                  {m.agentRole}{m.toRole ? ` → ${m.toRole}` : ""} · {m.kind} · {m.createdAt.toLocaleTimeString("en-US")}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap">{m.content}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+      <LiveRefresh active={LIVE.includes(c.status)} />
 
       {preview && (
         <section className="card grid gap-8 p-8 md:grid-cols-[18rem_1fr]">

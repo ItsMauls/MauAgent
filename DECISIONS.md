@@ -239,3 +239,111 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Memory:** every feedback for an LLM role is also written as an episodic memory (`feedback:<id>`, redacted by `writeMemory`, only when memory is on), so it is part of the next recall/reflection.
 - **No LLM narrative summary.** The brief made it optional; the raw feedback is what's shown. It can be added as a scheduled job (cost reason `reflection`) next to the raw list later.
 - **No backfill:** decisions made before this stage have no feedback rows. Their notes still appear under Discussion notes and count in the outcome labels.
+
+## AI model layer (OpenRouter) and Apify TikTok Trends (12 Oct 2026)
+### Mapping to this repo
+- **No monorepo** (Phase 0 ruling). The brief's `packages/agents/llm` is `src/lib/ai/` and `packages/providers/apify-tiktok-trends` is `src/lib/providers/apify-tiktok-trends/`.
+- **UI stays English** (owner ruling above), overriding the brief's Indonesian UI. The hint reads "Default: your country (Indonesia)".
+- **OpenRouter replaces Gemini for every LLM agent.** `GOOGLE_GENERATIVE_AI_API_KEY`, `AGENT_MODEL_*`, `ai` and `@ai-sdk/google` are removed. Gemini for keyframes and multimodal QC is still unbuilt; it would come back as its own provider.
+- **The client is plain `fetch`**, not an SDK. There is one endpoint (`POST {AI_BASE_URL}/chat/completions`), and direct access is needed to `reasoning`, `usage.cost` and the HTTP status that drives failover.
+  - Structured output: `response_format: json_schema` from `z.toJSONSchema` (non-strict). The schema is also in the system prompt. The reply goes through Zod parse plus one repair round with the validation errors, then fails clearly.
+- **Producer has no LLM** (deterministic, Phase 0), so it gets no AI override row. The brief's `revisionRouter` is the existing role `router`. `accountTeam` (QC) can be overridden too.
+- **vidIQ does not exist in code.** "Combined sources" means every `TrendSignal.source`, which today is only `apify_tiktok`. The `TrendSource` interface is in `providers/apify-tiktok-trends/index.ts`.
+
+### Findings: OpenRouter (checked 12 Oct 2026)
+- **`nvidia/nemotron-3-super-120b-a12b:free`** (`GET /api/v1/models`):
+  - Reasoning: `reasoning.supported_efforts = [low, medium]`, `default_effort = medium`, on by default, `mandatory = false`, `supports_max_tokens = true`.
+  - Supported parameters include `reasoning`, `response_format`, `structured_outputs`, `max_tokens` and `temperature`.
+  - Price is 0/0, and the context window is 262k.
+- **`reasoning` param** ([docs](https://openrouter.ai/docs/use-cases/reasoning-tokens)):
+  - Fields: `effort` (none…max), `max_tokens`, `exclude`, `enabled`. Reasoning tokens are billed as output tokens and count against `max_tokens`.
+  - The docs do not say whether the param is ignored on non-reasoning models, so we do not send it to them.
+  - Mapping (`src/lib/ai/effort.ts`): `off` → `{enabled:false}` (or the lowest effort if a model makes reasoning mandatory); `low`/`medium` → `{effort}`; `high` → the highest supported level at or below it (medium for Nemotron); a model with no `reasoning` metadata gets no param.
+- **Usage:** `usage.cost`, `prompt_tokens`, `completion_tokens` and `completion_tokens_details.reasoning_tokens` are always returned, so `CostEntry.usd` is the real charge. Estimates before a call use `/models` pricing per token, cached for 1 h.
+- **Limits:** `:free` models allow 20 req/min, and 50 req/day (1000/day once ≥10 credits have been bought). 429 = rate limit, 402 = no credits.
+- **Key check:** `GET /api/v1/key` with the key in the header is free. It is used by the daily integrations health check (card "OpenRouter (LLM)").
+
+### Findings: Apify actor `GULLsEZsAD69QFACQ` (data_xplorer/tiktok-trends, stable build 1.0.22)
+- The input schema was read from `GET /v2/acts/GULLsEZsAD69QFACQ/builds/default`, and the output shape from the dataset views and README examples. Constants live in `providers/apify-tiktok-trends/schema.ts`.
+- **`trendType` is `hashtags | videos` only.** Songs and creators are not in the schema, and the README says TikTok removed those feeds, so the brief's songs/creators options are dropped.
+- **Hashtag fields:**
+  - `countryCode`: 27 ISO 3166-1 alpha-2 codes, `ID` included.
+  - `hashtagPeriod`: 7/30/90.
+  - `industryId`: 16 values (empty = all).
+- **Video fields:**
+  - `videoCountry`: only `US, JP, VN, TH, ID`.
+  - `videoPeriod`: 7/30.
+  - `videoContentTag`: 6 values.
+  - `videoOrderBy`: 1 = views, 2 = engagement, 3 = 6 s views.
+  - `videoOrganicOnly`.
+- **Other inputs:** `maxItems` 1–1000 (we cap at 200), `saveMedia`, and `proxyConfiguration`.
+- **Pricing:** pay per event, US$0.025 per actor start + US$0.0015 per item at the FREE tier (lower on paid tiers). Both prices are seeded in PriceBook (`provider apify`, model `tiktok-trends`). The actual cost comes from `run.usageTotalUsd`.
+- **Default country:** `ID` is valid for both fields, so the fallback never needs the "first valid option" branch. A country with hashtags but no video feed (e.g. FR) gets `videoCountry = ID`.
+
+### Settings and caps
+- **`AiSettings`** is a singleton (`id "default"`, `brandKitId` nullable for later). It holds `defaultModel` (empty = env `AI_MODEL`), `reasoningEffort` (default **low**), `maxOutputTokens` (default 4096, range 256–32000), `temperature` and `perAgentOverrides`.
+  - `perAgentOverrides` is JSON validated by `AiOverrides`. The default is Creative Director medium, QC low, router off.
+  - The LLM caps are `monthlyBudgetUsd` (default 40), `maxCostPerCallUsd` (0.5) and `monthlyTokenCap` (5M), plus `enableFallbackKey`.
+  - It is read through a 30 s in-process cache that the save action clears. The merge order is env < DB global < per-agent.
+- **These caps are LLM-only** (`provider openrouter`). The existing `Setting.monthlyBudgetUsd` stays as the all-provider monthly cap used by the campaign and task budget gates.
+- **Enforced in `generateStructured`** before any request:
+  - month LLM spend + estimate vs budget;
+  - estimate vs per-call cap;
+  - month tokens vs token cap.
+  - A failed check throws `AiBudgetError` (a `NonRetriableError`). The pipeline's `tracked()` writes it to `Step.error`, so it shows on the Pipeline page. A direct task shows it as its error.
+- **Failover** (`failover.ts`): the primary key gets 2 retries with exponential backoff (honouring `Retry-After`, max 30 s) on 429/5xx/timeouts. After that, one switch to the fallback key on 401/402/429/5xx, if the key is set and enabled. Any other 4xx is thrown at once. The label `primary|fallback` goes to `CostEntry.keyLabel` and a warning log, never the key.
+- **Keys** are read only in `src/lib/ai/env.ts` (lazy Zod: the app boots without them and the first call fails with "Set AI_API_KEY in .env"). They are sent only in `Authorization` headers. `keyStatus()` gives the UI booleans. Provider error text is truncated and has no headers.
+
+### Cost ledger
+- **`CostEntry` is now the single ledger.** This reverses the Boards Stage 4 note that LLM cost lives only on artifacts; the brief requires a row per LLM call.
+  - `campaignId` became nullable (planned since the persona audit). New columns: `agentRole`, `tokensIn/Out/Reasoning`, `keyLabel`, `output`. New reasons: `trend`, `test`.
+  - Migration `20261012190000_ai_settings_trends` **backfills** one row per `Artifact.costUsd > 0` (`idemKey artifact:<id>`).
+  - `campaignSpent`, `monthSpent` and the Boards report now sum `CostEntry` only, so nothing is counted twice. `Artifact.costUsd` stays as a per-artifact display copy. The archive's per-agent spend uses `CostEntry.agentRole`, and Seedance rows (`provider byteplus`) count for the Content Creator.
+- **Idempotency:** every HTTP call is its own row (`<idemKey>:c<n>`, so repair calls are recorded too), and the validated result is stored in `output`. A retried step with the same idemKey (pipeline `runId:role`, direct task `task:<id>:<attempt>`) gets the stored result back without a new call.
+- **Free models** record US$0 with the real token counts.
+
+### Trend Scout
+- **Tables:**
+  - `TrendSourceSettings`: one row per source + brand. The global row has `brandKitId` null, so it is looked up with `findFirst`; Postgres unique ignores nulls.
+  - `TrendRun`: `idemKey trend:<inngestRunId>`.
+  - `TrendSignal`: unique `(source, externalId, capturedDay)`, so a second run on the same day updates the row instead of duplicating it.
+- **Schedule:** Inngest cron is static, so `trend-scout` ticks every 15 min. Each tick checks whether the stored `scheduleCron` (5 fields, owner time zone `Setting.timezone`) fires in its own 15-minute window, which means no double runs. The matcher is ~20 lines, tested; there is no cron library.
+- **Cache:** the cron skips if a successful run is younger than `cacheHours` (default 20). "Run now" bypasses schedule and cache, but not the caps.
+- **Caps:** `monthlyRunCap` is checked on runs that reached Apify. The estimate (PriceBook start + maxItems × item) is checked against `maxCostPerRunUsd`, and the same value is passed to Apify as `maxTotalChargeUsd`, which Apify enforces itself. A blocked run is stored as `TrendRun status blocked` with the reason.
+- **Retry safety:** the `start` step upserts the TrendRun first and reuses its `apifyRunId`, so a retry polls the same run. Polling runs every 15 s for up to 10 min. **Known gap** (same as Seedance): if the start call succeeds but the id write fails, a retry can start a second run.
+- **Visible errors:** FAILED, TIMED-OUT, ABORTED, an empty dataset and a run still going after 10 min each set `TrendRun.status/error`. These show on `/trends`. The cost row is written whatever the outcome.
+- **outlierScore is 0–10 for both types**, so they can be ranked together:
+  - Hashtags (which have no view/follower data): `10 × (1 − (rank−1)/n)`, × 1.2 if trending up / × 0.8 if down, capped at 10.
+  - Videos: `2.5 × log10(1 + views/followers)`, capped at 10.
+- **Field mapping:** `audio` is null (there is no songs feed). `hook` is the hashtag or the video title. The raw item is kept in `rawPayload`.
+- **Account Manager** (pipeline and direct task) gets the top 5 signals of the last 7 days by score, de-duplicated by URL. **"Used"** on `/trends` means a campaign's internal brief cites the URL in `trendRefs`.
+
+### Default country
+- Resolution order: stored value → Auth0 claim (any `*/country` custom claim, `country`, or `user_metadata.country`) → `CloudFront-Viewer-Country` → `x-vercel-ip-country` → `cf-ipcountry` → `ID`.
+- It runs only when the settings row is created (first visit to `/trends`); the result is stored. There is no UI to change it. The cron reads only the stored row, so a manual choice is never overwritten by a login from another country.
+- Headers are read server-side only, and only the 2-letter code is used. IP addresses and headers are never stored or logged.
+
+### Also fixed
+- **`PriceBook` unique key now includes `unit`** (migration `20261012191000_pricebook_unit_unique`). Before, a model with two units on the same date (Gemini input/output tokens, Apify start/item) silently kept only the first row in the seed.
+
+### Not verified live
+- `.env` has no `AI_API_KEY` and no `APIFY_API_TOKEN`, so no real OpenRouter call and no real actor run were made.
+- What was verified:
+  - Unit tests: effort mapping, failover (429/5xx/401/402 yes, 400 no), override precedence, caps, idempotent reuse, the repair round, no key in errors or ledger, build-input per type, normalize on README fixtures, the settings Zod, resolveDefaultCountry, the cron matcher and the run gate.
+  - Against the local DB: AI config resolution, country default `ID` without headers or profile, a manual change surviving a visit from another country, the backfill (7/7) and the run estimate (US$0.055 for 20 items).
+  - The dev server compiles `/api/inngest` with `trend-scout` (6 functions).
+
+## Sidebar (12 Oct 2026, owner)
+- **Boards is the home page:** `/` redirects to `/boards`, and the campaign list moved to `/campaigns` (search and back links updated). The logo links to `/boards`.
+- **No group headings.** Order: Boards, Campaigns, Briefs, Trends.
+- **Submenus collapse:** a submenu opens only when its menu is clicked, or when you are on one of its pages. One open at a time; clicking the active menu again closes it.
+- **Sidebar width** went from 240 px to 288 px (`w-72`).
+
+## Trigger.dev migration, Phase 0 (12 Oct 2026)
+- **SDK:** `@trigger.dev/sdk` and `@trigger.dev/build` 4.7.3 (imports from `@trigger.dev/sdk`, never `/v3`).
+- **Hosting:** Trigger.dev Cloud (default); region is whatever the project `proj_yprvcvooehbxmyjxugzs` uses in the dashboard.
+- **Layout:** the repo is a single Next app, not a monorepo, so tasks live in `src/trigger/` and the `WorkflowClient` in `src/lib/workflow/`. The brief's `packages/*` names map to `src/lib/*`.
+- **Engine flag:** `WORKFLOW_ENGINE=inngest|trigger`, default `inngest`. Inngest is untouched; call sites move to `WorkflowClient` in Phase 2. The Trigger.dev implementation throws until then.
+- **Queues:** shared `concurrencyLimit` per provider in `src/trigger/queues.ts` (`video`, `elevenlabs`, `vidiq`, `gemini-llm`, `ffmpeg-render`). The brief's `veo` is `video` because the video provider is Seedance.
+- **Build extensions:** `ffmpeg` only; Prisma extension is added in Phase 1 when tasks touch the DB.
+- **Not yet existing:** `runAgent`, `produceShots`, `runPostProduction`, `publishAll` are inline in `campaignPipeline.ts`/`agents/index.ts`; Phase 1 extracts them first.

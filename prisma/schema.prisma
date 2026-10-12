@@ -44,6 +44,15 @@ enum CostReason {
   initial
   revision
   regenerate
+  trend
+  test
+}
+
+enum ReasoningEffort {
+  off
+  low
+  medium
+  high
 }
 
 model BrandKit {
@@ -98,6 +107,7 @@ model Campaign {
   costs         CostEntry[]
   publishJobs   PublishJob[]
   creativeAssets CreativeAsset[]
+  messages      AgentMessage[]
 
   @@index([status])
 }
@@ -133,6 +143,21 @@ model Run {
   steps        Step[]
 
   @@index([campaignId, status])
+}
+
+// Transcript of a pipeline run: what each agent said and handed to the next one (shown live on the campaign page).
+model AgentMessage {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  runId      String
+  agentRole  String
+  toRole     String?
+  kind       String // start | output | handoff | error
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, createdAt])
 }
 
 model Step {
@@ -209,21 +234,116 @@ model Decision {
   createdAt   DateTime     @default(now())
 }
 
+// The single cost ledger: every paid (or quota-limited) call writes one row. Caps and reports sum this table.
 model CostEntry {
-  id         String     @id @default(cuid())
-  campaignId String
-  campaign   Campaign   @relation(fields: [campaignId], references: [id])
-  step       String
-  provider   String
-  model      String
-  units      Decimal    @db.Decimal(12, 4)
-  unitPrice  Decimal    @db.Decimal(12, 6)
-  usd        Decimal    @db.Decimal(10, 4)
-  attempt    Int        @default(1)
-  reason     CostReason @default(initial)
+  id              String     @id @default(cuid())
+  // Null for calls outside a campaign (direct tasks, trend runs, connection tests).
+  campaignId      String?
+  campaign        Campaign?  @relation(fields: [campaignId], references: [id])
+  step            String
+  provider        String
+  model           String
+  agentRole       String?
+  units           Decimal    @db.Decimal(12, 4)
+  unitPrice       Decimal    @db.Decimal(12, 6)
+  usd             Decimal    @db.Decimal(10, 4)
+  tokensIn        Int?
+  tokensOut       Int?
+  tokensReasoning Int?
+  // primary | fallback (which AI key served the call; never the key itself).
+  keyLabel        String?
+  // Validated LLM result: a retried step with the same idemKey prefix reuses it instead of calling again.
+  output          Json?
+  attempt         Int        @default(1)
+  reason          CostReason @default(initial)
   // campaignId:step:attempt — prevents double charges on retry.
-  idemKey    String     @unique
-  createdAt  DateTime   @default(now())
+  idemKey         String     @unique
+  createdAt       DateTime   @default(now())
+
+  @@index([provider, createdAt])
+}
+
+// Singleton (id = "default"): LLM settings from /settings/ai. Keys stay in env; empty defaultModel = env AI_MODEL.
+model AiSettings {
+  id                String          @id @default("default")
+  brandKitId        String?
+  defaultModel      String?
+  reasoningEffort   ReasoningEffort @default(low)
+  maxOutputTokens   Int             @default(4096)
+  temperature       Float           @default(0.7)
+  // { [role]: { model?, reasoningEffort?, maxOutputTokens? } }, validated by AiOverrides (src/lib/ai/settings.ts).
+  perAgentOverrides Json            @default("{\"creativeDirector\":{\"reasoningEffort\":\"medium\"},\"accountTeam\":{\"reasoningEffort\":\"low\"},\"router\":{\"reasoningEffort\":\"off\"}}")
+  // LLM-only caps (provider openrouter), enforced in generateStructured.
+  monthlyBudgetUsd  Decimal         @default(40) @db.Decimal(10, 2)
+  maxCostPerCallUsd Decimal         @default(0.5) @db.Decimal(10, 4)
+  monthlyTokenCap   Int             @default(5000000)
+  enableFallbackKey Boolean         @default(true)
+}
+
+// Apify TikTok Trends settings, one row per source and brand (null = global). Token stays in env.
+model TrendSourceSettings {
+  id               String   @id @default(cuid())
+  source           String   @default("apify_tiktok")
+  brandKitId       String?
+  trendType        String   @default("hashtags")
+  maxItems         Int      @default(20)
+  countryCode      String
+  hashtagPeriod    String   @default("7")
+  industryId       String   @default("")
+  videoCountry     String
+  videoPeriod      String   @default("7")
+  videoContentTag  String   @default("")
+  videoOrderBy     String   @default("1")
+  videoOrganicOnly Boolean  @default(false)
+  saveMedia        Boolean  @default(false)
+  useApifyProxy    Boolean  @default(true)
+  scheduleCron     String   @default("0 6 * * *")
+  enabled          Boolean  @default(false)
+  // A successful run younger than this is reused instead of calling the actor (cron only).
+  cacheHours       Int      @default(20)
+  monthlyRunCap    Int      @default(150)
+  maxCostPerRunUsd Decimal  @default(0.5) @db.Decimal(10, 4)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([source, brandKitId])
+}
+
+// One actor run. idemKey = trend:<eventId>, so an Inngest retry resumes the same Apify run.
+model TrendRun {
+  id         String    @id @default(cuid())
+  source     String    @default("apify_tiktok")
+  idemKey    String    @unique
+  trigger    String
+  apifyRunId String?
+  status     String    @default("pending")
+  itemCount  Int?
+  durationMs Int?
+  usd        Decimal?  @db.Decimal(10, 4)
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([source, status, startedAt])
+}
+
+// F12: one trend per source per day (dedupe on externalId + capturedDay).
+model TrendSignal {
+  id           String   @id @default(cuid())
+  source       String
+  platform     Platform
+  trendType    String
+  externalId   String
+  url          String
+  outlierScore Float
+  hook         String
+  format       String
+  audio        String?
+  capturedAt   DateTime @default(now())
+  capturedDay  DateTime @db.Date
+  rawPayload   Json
+
+  @@unique([source, externalId, capturedDay])
+  @@index([capturedAt, outlierScore])
 }
 
 // Versioned agent persona. The latest version per role is active; a restore copies an old version as a new one.
@@ -281,12 +401,14 @@ model AgentMemoryUse {
 enum Platform {
   instagram
   tiktok
+  threads
 }
 
 enum PublisherKind {
   instagram_graph
   tiktok_inbox
   orshot
+  buffer
 }
 
 enum PublishStatus {
@@ -359,7 +481,7 @@ model PriceBook {
   unitPrice     Decimal  @db.Decimal(12, 6)
   effectiveFrom DateTime @default(now())
 
-  @@unique([provider, model, effectiveFrom])
+  @@unique([provider, model, unit, effectiveFrom])
 }
 
 enum TaskStatus {

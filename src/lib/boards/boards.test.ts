@@ -20,8 +20,8 @@ const byId = (c: IntegrationCtx) => Object.fromEntries(integrationViews(c).map((
 test("integrations: Threads and Notion are never shown as connected", () => {
   const everything = ctx({
     accounts: [acct(), acct({ platform: "tiktok" })],
-    cache: Object.fromEntries(["threads", "notion", "s3", "gemini"].map((id) => [id, { ok: true, summary: "OK", checkedAt: new Date() }])),
-    env: { GOOGLE_GENERATIVE_AI_API_KEY: "x", ARK_API_KEY: "y", THREADS: "z", NOTION: "z" },
+    cache: Object.fromEntries(["threads", "notion", "s3", "openrouter", "apify"].map((id) => [id, { ok: true, summary: "OK", checkedAt: new Date() }])),
+    env: { AI_API_KEY: "x", APIFY_API_TOKEN: "x", ARK_API_KEY: "y", THREADS: "z", NOTION: "z" },
   });
   const v = byId(everything);
   assert.equal(v.threads.state, "soon");
@@ -31,7 +31,8 @@ test("integrations: Threads and Notion are never shown as connected", () => {
 test("integrations: status comes from data, not assumptions", () => {
   let v = byId(ctx());
   assert.equal(v.instagram.state, "inactive");
-  assert.equal(v.gemini.state, "inactive"); // no key
+  assert.equal(v.openrouter.state, "inactive"); // no key
+  assert.equal(v.apify.state, "inactive");
   assert.equal(v.s3.state, "configured"); // never checked yet → not "connected"
   assert.equal(v.seedance.state, "inactive");
   v = byId(ctx({ env: { ARK_API_KEY: "k" } }));
@@ -48,7 +49,7 @@ test("integrations: client payload never carries tokens or env values", () => {
   const secret = "sk-SECRET-VALUE-123";
   const views = integrationViews(ctx({
     accounts: [{ ...acct(), accessTokenEnc: secret, refreshTokenEnc: secret } as IntegrationCtx["accounts"][number]],
-    env: { GOOGLE_GENERATIVE_AI_API_KEY: secret, ARK_API_KEY: secret },
+    env: { AI_API_KEY: secret, AI_API_KEY_FALLBACK: secret, APIFY_API_TOKEN: secret, ARK_API_KEY: secret },
   }));
   const json = JSON.stringify(views);
   assert.ok(!json.includes(secret));

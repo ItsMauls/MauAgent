@@ -1,40 +1,34 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ROLES } from "@/lib/boards/roles";
+import { FEATURES } from "./boards/feature/features";
 import type { AgentState } from "@/lib/boards/status";
 
 type Item = { href: string; label: string; icon: string; children?: Item[] };
 
-// Items are added in the stage that builds their page (no links to pages that don't exist yet).
-const groups: { title: string | null; items: Item[] }[] = [
+const feat = (keep: (f: (typeof FEATURES)[number]) => boolean): Item[] => FEATURES.filter(keep).map((f) => ({ href: `/boards/feature/${f.slug}`, label: f.label, icon: f.icon }));
+
+// Items are added in the stage that builds their page (no links to pages that don't exist yet). Boards is the home page.
+const items: Item[] = [
   {
-    title: "Operations",
-    items: [
-      {
-        href: "/",
-        label: "Campaigns",
-        icon: "grid_view",
-        children: [
-          { href: "/campaigns/workflow", label: "Workflow", icon: "account_tree" },
-          { href: "/approval", label: "Approval", icon: "fact_check" },
-        ],
-      },
-      { href: "/brief", label: "Briefs", icon: "auto_awesome" },
-    ],
+    href: "/boards",
+    label: "Boards",
+    icon: "dashboard",
+    children: [{ href: "/boards/roles", label: "Agent Roles", icon: "account_tree" }, ...feat((f) => f.slug === "library")],
   },
   {
-    title: "Boards",
-    items: [
-      {
-        href: "/boards",
-        label: "Boards",
-        icon: "dashboard",
-        children: ROLES.map((r) => ({ href: `/boards/${r.slug}`, label: r.label, icon: r.icon })),
-      },
+    href: "/campaigns",
+    label: "Campaigns",
+    icon: "grid_view",
+    children: [
+      { href: "/approval", label: "Approval", icon: "fact_check" },
+      ...feat((f) => f.slug !== "library"),
     ],
   },
+  { href: "/brief", label: "Briefs", icon: "auto_awesome" },
+  { href: "/trends", label: "Trends", icon: "trending_up" },
 ];
 
 export type RoleBadge = { state: AgentState; active: number };
@@ -44,24 +38,36 @@ const DOT: Record<AgentState, string> = { busy: "bg-ok", waiting: "bg-amber-400"
 export function NavLinks({ approvalCount, roles = {} }: { approvalCount: number; roles?: Record<string, RoleBadge> }) {
   const path = usePathname();
   const isActive = (href: string) =>
-    href === "/" ? path === "/" || (path.startsWith("/campaigns/") && !path.startsWith("/campaigns/workflow"))
+    href === "/campaigns" ? path === "/campaigns" || path.startsWith("/campaigns/")
       : href === "/boards" ? path === "/boards"
         : path.startsWith(href);
+  const inSection = (i: Item) => isActive(i.href) || !!i.children?.some((c) => isActive(c.href));
+
+  // Submenus stay closed until their menu is clicked; the section you are in opens on navigation.
+  const [open, setOpen] = useState<string | null>(() => items.find(inSection)?.href ?? null);
+  useEffect(() => {
+    const current = items.find(inSection);
+    if (current?.children) setOpen(current.href);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
 
   const link = (i: Item, child = false) => {
     const active = isActive(i.href);
     const badge = roles[i.href.replace("/boards/", "")];
+    const expanded = open === i.href;
     return (
       <Link
         key={i.href}
         href={i.href}
         aria-current={active ? "page" : undefined}
-        className={`flex items-center gap-3 rounded-full px-4 text-sm font-semibold transition ${child ? "py-2" : "py-2.5"} ${
+        aria-expanded={i.children ? expanded : undefined}
+        onClick={() => i.children && setOpen(expanded && active ? null : i.href)}
+        className={`flex items-center gap-3 rounded-full px-4 text-sm font-semibold transition ${child ? "py-2.5" : "py-3"} ${
           active ? "bg-brand text-white shadow-sm" : "text-ink-2 hover:bg-brand-soft hover:text-ink"
         }`}
       >
         <span className="material-symbols-outlined">{i.icon}</span>
-        {i.label}
+        <span className="truncate">{i.label}</span>
         {badge && (
           <span className="ml-auto flex items-center gap-1.5" aria-label={`${badge.state}, ${badge.active} active`}>
             {badge.active > 0 && <span className={`text-[11px] font-bold ${active ? "text-white" : "text-ink-2"}`}>{badge.active}</span>}
@@ -73,26 +79,24 @@ export function NavLinks({ approvalCount, roles = {} }: { approvalCount: number;
             {approvalCount}
           </span>
         )}
+        {i.children && (
+          <span className={`material-symbols-outlined ml-auto !text-[18px] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden>
+            expand_more
+          </span>
+        )}
       </Link>
     );
   };
 
   return (
-    <nav aria-label="Main" className="flex flex-col gap-4">
-      {groups.map((g, gi) => (
-        <section key={gi} aria-labelledby={g.title ? `nav-group-${gi}` : undefined} className="flex flex-col gap-1">
-          {g.title && (
-            <h2 id={`nav-group-${gi}`} className="px-4 pb-1 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3">
-              {g.title}
-            </h2>
+    <nav aria-label="Main" className="flex flex-col gap-1.5">
+      {items.map((i) => (
+        <div key={i.href} className="flex flex-col gap-1">
+          {link(i)}
+          {i.children && open === i.href && (
+            <div className="ml-6 flex flex-col gap-1 border-l border-line pl-2">{i.children.map((c) => link(c, true))}</div>
           )}
-          {g.items.map((i) => (
-            <div key={i.href} className="flex flex-col gap-1">
-              {link(i)}
-              {i.children && <div className="ml-6 flex flex-col gap-1 border-l border-line pl-2">{i.children.map((c) => link(c, true))}</div>}
-            </div>
-          ))}
-        </section>
+        </div>
       ))}
     </nav>
   );
