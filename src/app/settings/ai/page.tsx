@@ -2,14 +2,16 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { keyStatus } from "@/lib/ai/env";
 import { EFFORTS } from "@/lib/ai/effort";
-import { AI_ROLES, AI_ROLE_LABEL, AiOverrides, MAX_OUTPUT_TOKENS, getAiSettings } from "@/lib/ai/settings";
+import { AI_ROLES, AI_ROLE_LABEL, AiOverrides, IMAGE_PROVIDERS, IMAGE_PROVIDER_LABEL, ImageModels, MAX_OUTPUT_TOKENS, VIDEO_PROVIDERS, VIDEO_PROVIDER_LABEL, VideoModels, getAiSettings, parseImageProviders, parseVideoProviders } from "@/lib/ai/settings";
 import { PROVIDER } from "@/lib/ai/generate";
-import { saveAiSettings } from "../actions";
+import { saveAiSettings, saveImageSettings } from "../actions";
 import { TestConnection } from "../forms";
 
 export const dynamic = "force-dynamic";
 
 const EFFORT_LABEL = { off: "Off", low: "Low", medium: "Medium", high: "High" };
+const IMAGE_MODEL_HINT = { magichour: "default, seedream-v4, nano-banana-2", modelark: "seedream-5-0-260128", openrouter: "google/gemini-2.5-flash-image" };
+const VIDEO_MODEL_HINT = { byteplus: "SEEDANCE_MODEL_DRAFT from .env", magichour: "default, kling-3.0, seedance-2.0, veo3.1" };
 
 function Status({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -48,6 +50,10 @@ export default async function AiSettingsPage() {
   const keys = keyStatus();
   const parsed = AiOverrides.safeParse(s.perAgentOverrides);
   const ov = parsed.success ? parsed.data : {};
+  const imgOrder = parseImageProviders(s.imageProviders);
+  const imgModels = ImageModels.catch({}).parse(s.imageModels);
+  const vidOrder = parseVideoProviders(s.videoProviders);
+  const vidModels = VideoModels.catch({}).parse(s.videoModels);
   const activeModel = s.defaultModel || keys.aiModel || "—";
   const tokens = (usage._sum.tokensIn ?? 0) + (usage._sum.tokensOut ?? 0);
 
@@ -77,6 +83,55 @@ export default async function AiSettingsPage() {
           {usage._count} calls · {(usage._sum.tokensReasoning ?? 0).toLocaleString("en-US")} reasoning tokens. Free (<code>:free</code>) models cost US$0 but still count tokens and are rate-limited by OpenRouter.
         </p>
       </section>
+
+      <form action={saveImageSettings} className="card mt-6 space-y-4 p-6">
+        <h2 className="text-lg font-semibold">Image and video generation</h2>
+        <p className="text-sm text-ink-2">
+          Pick which platform generates images and video. If the first one fails (trial used up, rate limit, no key), the next one is tried. Keys live in <code>.env</code>
+          (<code>MAGIC_HOUR_API_KEY</code>, <code>ARK_API_KEY</code>, <code>AI_API_KEY</code>). Magic Hour ignores reference images, so character views may look less consistent.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <label key={i} className="block">
+              <span className="label">{i === 0 ? "Preferred" : `Fallback ${i}`}</span>
+              <select name={`order.${i}`} defaultValue={imgOrder[i] ?? ""} className="input mt-1 w-full">
+                <option value="">Off</option>
+                {IMAGE_PROVIDERS.map((p) => <option key={p} value={p}>{IMAGE_PROVIDER_LABEL[p]}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {IMAGE_PROVIDERS.map((p) => (
+            <label key={p} className="block">
+              <span className="label">{IMAGE_PROVIDER_LABEL[p]} model (empty = default)</span>
+              <input name={`model.${p}`} defaultValue={imgModels[p] ?? ""} placeholder={IMAGE_MODEL_HINT[p]} className="input mt-1 w-full" />
+            </label>
+          ))}
+        </div>
+        <h3 className="pt-2 font-semibold">Video</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[0, 1].map((i) => (
+            <label key={i} className="block">
+              <span className="label">{i === 0 ? "Preferred" : "Fallback"}</span>
+              <select name={`vorder.${i}`} defaultValue={vidOrder[i] ?? ""} className="input mt-1 w-full">
+                <option value="">Off</option>
+                {VIDEO_PROVIDERS.map((p) => <option key={p} value={p}>{VIDEO_PROVIDER_LABEL[p]}</option>)}
+              </select>
+            </label>
+          ))}
+          {VIDEO_PROVIDERS.map((p) => (
+            <label key={p} className="block">
+              <span className="label">{VIDEO_PROVIDER_LABEL[p]} model</span>
+              <input name={`vmodel.${p}`} defaultValue={vidModels[p] ?? ""} placeholder={VIDEO_MODEL_HINT[p]} className="input mt-1 w-full" />
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-ink-3">Fallback applies when a video task cannot be created (trial used up, no key). A task that fails while rendering leaves the shot open for manual upload.</p>
+        <button className="btn-primary w-full">
+          <span className="material-symbols-outlined">save</span>Save media settings
+        </button>
+      </form>
 
       <form action={saveAiSettings} className="card mt-6 space-y-5 p-6">
         <h2 className="text-lg font-semibold">Defaults for every agent</h2>

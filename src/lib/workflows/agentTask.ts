@@ -32,6 +32,9 @@ export const agentTask = inngest.createFunction(
     const { taskId } = z.object({ taskId: z.string() }).parse(event.data);
     // Step results come back JSON-serialized; everything this flow passes between steps is plain JSON already.
     const steps = { run: <T,>(id: string, fn: () => Promise<T>) => step.run(id, fn) as Promise<T> };
+    // A task scrapped while queued is gone (or no longer QUEUED): stop before any worker or paid call starts.
+    const queued = await step.run("still-queued", () => db.agentTask.count({ where: { id: taskId, status: "QUEUED" } }));
+    if (!queued) return { skipped: true };
     return taskFlow(steps, {
       start: async () => {
         const t = await db.agentTask.update({ where: { id: taskId }, data: { status: "RUNNING", error: null } });

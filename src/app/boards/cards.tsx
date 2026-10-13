@@ -60,7 +60,7 @@ export async function AgendaCard({ day: dayParam, tz, qs }: { day?: string; tz: 
     const [jobs, campaigns] = await Promise.all([
       db.publishJob.findMany({
         where: { scheduledAt: { not: null } },
-        select: { campaignId: true, platform: true, scheduledAt: true, socialAccount: { select: { handle: true } } },
+        select: { campaignId: true, agentTaskId: true, platform: true, scheduledAt: true, socialAccount: { select: { handle: true } } },
       }),
       db.campaign.findMany({
         where: { status: { notIn: ["REJECTED", "EXPIRED", "FAILED", "PUBLISHED"] } },
@@ -207,8 +207,8 @@ export async function IntegrationsCard() {
               <span className="material-symbols-outlined">refresh</span>Check
             </button>
           </form>
-          <Link href="/accounts" className="btn-soft px-4 py-2">Manage</Link>
-          <Link href="/accounts" aria-label="Add an integration" className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white hover:bg-brand-dark">
+          <Link href="/connections" className="btn-soft px-4 py-2">Manage</Link>
+          <Link href="/connections" aria-label="Add an integration" className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-white hover:bg-brand-dark">
             <span className="material-symbols-outlined">add</span>
           </Link>
         </div>

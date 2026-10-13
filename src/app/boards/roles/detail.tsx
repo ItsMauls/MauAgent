@@ -6,20 +6,23 @@ import { roleWork } from "@/lib/boards/status";
 import { formatDuration } from "@/lib/status";
 import { getPersona, isAgentRole } from "@/lib/agents/persona";
 import { agentExperience } from "@/lib/agents/memory";
-import AccountsPage from "../../accounts/page";
+import { ChannelList } from "../../connections/channels";
 import { Empty } from "../../campaigns/[id]/shots";
 import { CreatorLibrary } from "../library";
-import { ArtifactsPanel, ExecutionQueue, MemoryPanel, QuickTask, ReadyTalent, ResultsPanel, Schedule, TalentRequests } from "../workspace";
+import { ArtifactsPanel, ExecutionQueue, MemoryPanel, QuickTask, ReadyTalent, Schedule, TalentRequests } from "../workspace";
 import { TASKS } from "@/lib/boards/tasks";
 import { initials, STATE_PILL } from "../cards";
+import { ScrapButton } from "../task-form";
+import { AgentChat } from "../chat";
+import type { WorkColumn, WorkItem } from "@/lib/boards/status";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "task" | "focus" | RoleTab | "results" | "artifacts" | "memory";
+type Tab = "task" | "focus" | RoleTab | "chat" | "artifacts" | "memory";
 const TAB_LABEL: Record<Tab, string> = {
   task: "Quick task",
   focus: "Current focus",
-  results: "Results & feedback",
+  chat: "Chat",
   artifacts: "Artifacts",
   memory: "Memory",
   accounts: "Accounts",
@@ -30,6 +33,51 @@ const TAB_LABEL: Record<Tab, string> = {
   talent: "Talent",
 };
 
+const TAB_ICON: Record<Tab, string> = {
+  task: "bolt", focus: "center_focus_strong", chat: "chat", artifacts: "inventory_2", memory: "neurology",
+  accounts: "link", ready: "task_alt", queue: "format_list_numbered", schedule: "event", library: "photo_library", talent: "face",
+};
+
+const COLUMNS: { key: WorkColumn; title: string; icon: string; hint: string }[] = [
+  { key: "queued", title: "Queued", icon: "schedule", hint: "Not started. Scrap one to stop a worker from picking it up." },
+  { key: "working", title: "Working", icon: "bolt", hint: "Running now." },
+  { key: "waiting", title: "Waiting", icon: "hourglass_top", hint: "Parked at a gate or for another agent." },
+];
+
+function Kanban({ items, name }: { items: WorkItem[]; name: string }) {
+  if (!items.length) return <Empty icon="coffee" text={`${name} is idle: no campaign or task in progress.`} />;
+  return (
+    <div className="grid h-full gap-4 md:grid-cols-3 md:grid-rows-[minmax(0,1fr)]">
+      {COLUMNS.map((c) => {
+        const col = items.filter((i) => i.column === c.key);
+        return (
+          <section key={c.key} aria-label={c.title} className="flex min-h-0 flex-col rounded-2xl bg-canvas p-3">
+            <h3 className="mb-3 flex shrink-0 items-center gap-1.5 px-1 text-sm font-bold">
+              <span className="material-symbols-outlined !text-[18px] text-ink-2">{c.icon}</span>{c.title}
+              <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs text-ink-2">{col.length}</span>
+            </h3>
+            <ul className="quiet-scroll min-h-0 flex-1 space-y-2 overflow-y-auto">
+              {col.map((i) => (
+                <li key={i.key} className="rounded-xl border border-line bg-white p-3 text-sm shadow-sm">
+                  <Link href={i.href} className="block hover:text-brand">
+                    <span className="line-clamp-2 font-semibold">{i.title}</span>
+                    <span className="mt-1 flex items-center justify-between gap-2 text-xs text-ink-2">
+                      <span className="truncate">{i.stage}</span>
+                      <span className="shrink-0">{formatDuration(Date.now() - i.since.getTime())}</span>
+                    </span>
+                  </Link>
+                  {i.column === "queued" && i.taskId && <div className="mt-2 border-t border-line pt-2"><ScrapButton taskId={i.taskId} /></div>}
+                </li>
+              ))}
+              {!col.length && <li className="px-1 py-4 text-center text-xs text-ink-3">{c.hint}</li>}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Character detail, rendered inside the dialog of /boards/roles. */
 export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string, string | undefined> }) {
   const role = roleBySlug(slug);
@@ -38,10 +86,9 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
   const tabs: Tab[] = [
     ...(TASKS[role.agentRole] ? (["task"] as const) : []),
     ...role.tabs.filter((t) => t === "queue"),
-    ...(llmRole ? (["memory"] as const) : []),
+    ...(llmRole ? (["chat", "memory"] as const) : []),
     "focus",
     ...role.tabs.filter((t) => t !== "queue"),
-    "results",
     "artifacts",
   ];
   const tab: Tab = tabs.includes(sp.tab as Tab) ? (sp.tab as Tab) : tabs[0];
@@ -55,8 +102,8 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
   const [stateLabel, stateCls] = STATE_PILL[work.state];
 
   return (
-    <div className="space-y-6">
-      <header className="card flex flex-wrap items-center gap-5 p-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <header className="card flex shrink-0 flex-wrap items-center gap-5 p-6">
         <span aria-hidden className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xl font-bold text-violet-700">{initials(name)}</span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -78,52 +125,46 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
       </header>
 
       {persona && (
-        <dl className="card grid gap-4 p-6 text-sm sm:grid-cols-2">
+        <details className="card shrink-0 px-6 py-3 text-sm">
+          <summary className="cursor-pointer font-semibold">Persona <span className="font-normal text-ink-2">· values, strengths, blind spots</span></summary>
+          <dl className="mt-3 grid gap-4 sm:grid-cols-2">
           {([["Values", persona.values], ["Strengths", persona.strengths], ["Blind spots", persona.blindSpots], ["Non-negotiables", persona.nonNegotiables]] as const).map(([k, v]) => (
             <div key={k}>
               <dt className="label">{k}</dt>
               <dd className="text-ink-2">{v.join(" · ") || "-"}</dd>
             </div>
           ))}
-        </dl>
+          </dl>
+        </details>
       )}
 
-      <nav aria-label={`${role.label} sections`} className="flex flex-wrap gap-2">
+      <nav aria-label={`${role.label} sections`} className="quiet-scroll flex shrink-0 gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <Link
             key={t}
             href={`/boards/roles?role=${role.slug}&tab=${t}`}
+            scroll={false}
             aria-current={t === tab ? "page" : undefined}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${t === tab ? "bg-brand text-white" : "bg-white text-ink-2 hover:bg-brand-soft"}`}
+            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${t === tab ? "border-brand text-brand" : "border-transparent text-ink-2 hover:text-ink"}`}
           >
+            <span className="material-symbols-outlined !text-[18px]">{TAB_ICON[t]}</span>
             {TAB_LABEL[t]}
           </Link>
         ))}
       </nav>
 
-      <section className={tab === "accounts" ? "" : "card p-6"}>
+      <section className={`quiet-scroll min-h-0 flex-1 overflow-y-auto ${tab === "accounts" ? "" : "card p-6"}`}>
         {tab === "task" && <QuickTask role={role} taskId={sp.task} />}
         {tab === "artifacts" && <ArtifactsPanel role={role} q={sp.q?.trim() || undefined} a={sp.a} b={sp.b} />}
         {tab === "memory" && <MemoryPanel role={role} />}
-        {tab === "results" && <ResultsPanel role={role} />}
-        {tab === "focus" &&
-          (work.items.length ? (
-            <ul className="space-y-2">
-              {work.items.map((i) => (
-                <li key={i.key}>
-                  <Link href={i.href} className="flex flex-wrap items-center gap-3 rounded-2xl bg-canvas p-4 hover:bg-brand-soft">
-                    <span className={`pill ${STATE_PILL[i.state][1]}`}>{STATE_PILL[i.state][0]}</span>
-                    <span className="font-semibold">{i.title}</span>
-                    <span className="text-sm text-ink-2">{i.stage}</span>
-                    <span className="ml-auto text-xs text-ink-2">{formatDuration(Date.now() - i.since.getTime())}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty icon="coffee" text={`${name} is idle: no campaign or task in progress.`} />
-          ))}
-        {tab === "accounts" && <AccountsPage searchParams={Promise.resolve({})} />}
+        {tab === "chat" && <AgentChat slug={role.slug} name={name} initials={initials(name)} />}
+        {tab === "focus" && <Kanban items={work.items} name={name} />}
+        {tab === "accounts" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3"><p className="text-sm text-ink-2">Channels linked through Buffer (read-only).</p><Link href="/connections" className="btn-soft">Manage in Connections</Link></div>
+            <ChannelList />
+          </div>
+        )}
         {tab === "library" && <CreatorLibrary />}
         {tab === "talent" && <><TalentRequests /><CreatorLibrary kinds={["character"]} /></>}
         {tab === "ready" && <ReadyTalent />}

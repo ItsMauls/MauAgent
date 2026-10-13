@@ -21,7 +21,8 @@ import {
   type ProductionPlan,
   type VisualDirection,
 } from "@/lib/agents/schemas";
-import { createSeedanceTask, getSeedanceTask, seedanceConfig } from "@/lib/providers/seedance";
+import { seedanceConfig } from "@/lib/providers/seedance";
+import { createVideoTask, getVideoTask } from "@/lib/providers/video";
 import { renderCut } from "@/lib/media/renderCut";
 import { uploadFromUrl } from "@/lib/s3";
 import { recordAsset } from "@/lib/assets";
@@ -30,6 +31,8 @@ import { allowedFrom } from "@/lib/status";
 import { topTrendRefs } from "@/lib/trends";
 import { decisionFeedback, qcFeedback, writeFeedback } from "@/lib/boards/feedback";
 import { NonRetriableError } from "inngest";
+import { resolveTargets, type PublishTarget } from "@/lib/publish";
+import { createPublishJobs } from "@/lib/publishPlan";
 import type { CampaignStatus, Prisma } from "@prisma/client";
 
 /** Status change guarded by the state machine (atomic: the WHERE only matches allowed source statuses). */
@@ -240,25 +243,24 @@ export const campaignPipeline = inngest.createFunction(
         // Task is created in its own step → the result is memoized by Inngest, so retrying later steps does not create a new task.
         const taskId = await step.run(`seedance-create-${s.shotId}`, async () => {
           const pkg = promptPackage(campaignId, spec, visual);
-          const id = await createSeedanceTask(`${pkg.prompt}\nDialogue: ${pkg.vo}`, spec, "draft");
-          const { model } = seedanceConfig("draft");
+          const made = await createVideoTask(`${pkg.prompt}\nDialogue: ${pkg.vo}`, spec, "draft");
           // One charge per shot per run: a retry of this run reuses the key, a regenerate run gets a new one.
           const idemKey = `${campaignId}:seedance:${s.shotId}:${runId}`;
           await db.costEntry.upsert({
             where: { idemKey },
             create: {
-              campaignId, step: `seedance-${s.shotId}`, provider: "byteplus", model, reason,
+              campaignId, step: `seedance-${s.shotId}`, provider: made.provider, model: made.model, reason,
               units: spec.durationSec, unitPrice: s.estCostUsd / spec.durationSec || 0, usd: s.estCostUsd, idemKey,
             },
             update: {},
           });
-          return id;
+          return made.taskId;
         });
 
         let videoUrl: string | null = null;
         for (let i = 0; i < 60 && !videoUrl; i++) {
           await step.sleep(`seedance-wait-${s.shotId}-${i}`, "15s");
-          const st = await step.run(`seedance-poll-${s.shotId}-${i}`, () => getSeedanceTask(taskId));
+          const st = await step.run(`seedance-poll-${s.shotId}-${i}`, () => getVideoTask(taskId));
           if (st.status === "failed") break; // slot is left open for manual upload
           if (st.status === "succeeded") videoUrl = st.videoUrl;
         }
@@ -267,7 +269,7 @@ export const campaignPipeline = inngest.createFunction(
           const shot = await db.shot.findUniqueOrThrow({ where: { campaignId_shotId: { campaignId, shotId: s.shotId } } });
           await say(campaignId, runId, "videographer", videoUrl ? "output" : "error", `Shot ${s.shotId}: ${videoUrl ? "footage rendered." : "generation failed, slot left open for manual upload."}`);
           if (!videoUrl) return db.shot.update({ where: { id: shot.id }, data: { status: "failed" } });
-          const key = `campaigns/${campaignId}/${s.shotId}/seedance-${taskId}.mp4`;
+          const key = `campaigns/${campaignId}/${s.shotId}/seedance-${taskId.replace(/:/g, "-")}.mp4`;
           await uploadFromUrl(key, videoUrl);
           return recordAsset(shot.id, key, "seedance", spec.durationSec);
         });
@@ -314,7 +316,8 @@ export const campaignPipeline = inngest.createFunction(
         timeout: "7d",
       });
       const d = decision?.data as
-        | { type: "approve" | "reject"; decisionId?: string }
+        | { type: "approve"; decisionId?: string; publishTargets?: PublishTarget[] }
+        | { type: "reject"; decisionId?: string }
         | { type: "revise"; decisionId?: string; notes: string; targetAgent?: z.infer<typeof RevisionTarget> }
         | { type: "regenerate"; decisionId?: string; shotIds: string[] }
         | undefined;
@@ -362,7 +365,16 @@ export const campaignPipeline = inngest.createFunction(
         await db.run.update({ where: { id: runId }, data: { status: "done", endedAt: new Date() } });
       });
       // Episodic memory is written by its own function, so a memory failure never touches the campaign.
-      if (d?.type === "approve") await step.sendEvent("approved", { name: "campaign/approved", data: { campaignId } });
+      if (d?.type === "approve") {
+        await step.sendEvent("approved", { name: "campaign/approved", data: { campaignId } });
+        // Explicit targets from the Approval panel, else each platform's default channel. None = stay APPROVED (visible on the campaign).
+        const jobs = await step.run("create-publish-jobs", async () => {
+          const accounts = await db.socialAccount.findMany({ where: { publisher: "buffer" }, select: { id: true, platform: true, active: true, status: true, isDefaultForPlatform: true } });
+          const targets = resolveTargets(d.publishTargets, accounts, brief.platforms);
+          return targets.length ? (await createPublishJobs(campaignId, targets)).filter((j) => j.created) : [];
+        });
+        if (jobs.length) await step.sendEvent("publish", jobs.map((j) => ({ name: "publish/job", data: { jobId: j.id } })));
+      }
     } catch (e) {
       // Permanent failure after retries are exhausted. NonRetriable/step errors are rethrown after the status is recorded.
       await step.run("mark-failed", async () => {

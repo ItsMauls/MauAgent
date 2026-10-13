@@ -29,13 +29,15 @@ const items: Item[] = [
   },
   { href: "/brief", label: "Briefs", icon: "auto_awesome" },
   { href: "/trends", label: "Trends", icon: "trending_up" },
+  { href: "/analytics", label: "Analytics", icon: "monitoring" },
+  { href: "/connections", label: "Connections", icon: "hub" },
 ];
 
 export type RoleBadge = { state: AgentState; active: number };
 const DOT: Record<AgentState, string> = { busy: "bg-ok", waiting: "bg-amber-400", idle: "bg-ink-3" };
 // Accounts, Settings and Log out live in the account menu in the top bar (layout.tsx).
 
-export function NavLinks({ approvalCount, roles = {} }: { approvalCount: number; roles?: Record<string, RoleBadge> }) {
+export function NavLinks({ approvalCount, roles = {}, connectionAlert = false }: { approvalCount: number; roles?: Record<string, RoleBadge>; connectionAlert?: boolean }) {
   const path = usePathname();
   const isActive = (href: string) =>
     href === "/campaigns" ? path === "/campaigns" || path.startsWith("/campaigns/")
@@ -74,6 +76,7 @@ export function NavLinks({ approvalCount, roles = {} }: { approvalCount: number;
             <span className={`h-2 w-2 rounded-full ${DOT[badge.state]}`} />
           </span>
         )}
+        {i.href === "/connections" && connectionAlert && <span role="img" aria-label="A connection needs attention" className="ml-auto h-2.5 w-2.5 rounded-full bg-amber-400" />}
         {i.href === "/approval" && approvalCount > 0 && (
           <span aria-label={`${approvalCount} waiting`} className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? "bg-white text-brand" : "bg-amber-soft text-amber-800"}`}>
             {approvalCount}

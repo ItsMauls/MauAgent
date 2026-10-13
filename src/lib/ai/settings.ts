@@ -97,3 +97,25 @@ export async function modelMeta(model: string, fetchImpl: typeof fetch = fetch):
     supportsJsonSchema: !m || !!m.supported_parameters?.some((p) => p === "response_format" || p === "structured_outputs"),
   };
 }
+
+// ---------- image generation providers (/settings/ai) ----------
+
+export const IMAGE_PROVIDERS = ["magichour", "modelark", "openrouter"] as const;
+export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
+export const IMAGE_PROVIDER_LABEL: Record<ImageProvider, string> = {
+  magichour: "Magic Hour",
+  modelark: "BytePlus Seedream (ModelArk)",
+  openrouter: "OpenRouter",
+};
+
+/** Ordered, deduplicated, known providers only. */
+export const parseProviders = <T extends string>(v: string, all: readonly T[]) => [...new Set(v.split(",").map((s) => s.trim()))].filter((s): s is T => (all as readonly string[]).includes(s));
+export const parseImageProviders = (v: string) => parseProviders(v, IMAGE_PROVIDERS);
+
+export const ImageModels = z.partialRecord(z.enum(IMAGE_PROVIDERS), Model);
+
+export const VIDEO_PROVIDERS = ["byteplus", "magichour"] as const;
+export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
+export const VIDEO_PROVIDER_LABEL: Record<VideoProvider, string> = { byteplus: "BytePlus Seedance (ModelArk)", magichour: "Magic Hour" };
+export const parseVideoProviders = (v: string) => parseProviders(v, VIDEO_PROVIDERS);
+export const VideoModels = z.partialRecord(z.enum(VIDEO_PROVIDERS), Model);

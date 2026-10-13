@@ -5,7 +5,8 @@ import { presignGet } from "@/lib/s3";
 import { budgetGate, campaignSpent, monthSpent } from "@/lib/cost";
 import type { ApprovalPackage, ProductionPlan } from "@/lib/agents/schemas";
 import { restoreFinalCut, getSettings } from "../actions";
-import { BudgetGatePanel, DecisionButtons, RestoreButton } from "../ui";
+import { BudgetGatePanel, RestoreButton } from "../ui";
+import { ApprovalDecision } from "./decision";
 import { QUEUE_STATUSES, StatusPill } from "../pills";
 
 export const dynamic = "force-dynamic";
@@ -142,7 +143,7 @@ async function Card({ c, monthSpentUsd, monthCapUsd }: { c: QueueCampaign; month
           ) : (
             <p className="text-ink-2">No approval package (QC) for this version.</p>
           )}
-          <DecisionButtons campaignId={c.id} shots={c.shots.map((s) => ({ shotId: s.shotId, source: s.source }))} />
+          <ApprovalDecision c={c} />
         </div>
       </div>
 

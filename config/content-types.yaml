@@ -1,0 +1,163 @@
+# Content types for X / Threads text posts (Socmed Specialist batches).
+# Loaded and validated by src/lib/content/config.ts; the prompt and the validator both read this file.
+# Change a weight to 0 to switch a type off.
+
+variants: 3              # variants generated per post
+maxConsecutive: 2        # the same type never appears more than this many times in a row
+weeklyThreadCap: 2       # thread-type posts per rolling 7 days (generated batches + this batch)
+similarity:
+  threshold: 0.5         # Jaccard over normalised words; at or above = too similar
+  lookbackDays: 30       # compared with posts created in this window
+  action: reject         # reject | review
+
+# Creative angles for the light types; one is offered to the model, which uses it only if it fits the topic.
+seedThemes: [mudik, deadline, skripsi, ngoding, gajian, macet, kos-kosan, rapat online, diet, begadang, ojol, kuliah]
+
+# Capitalised words that are not people (lowercase). The real-person check ignores them.
+realPersonAllowlist:
+  [indonesia, jakarta, bandung, surabaya, yogyakarta, bali, google, instagram, tiktok, whatsapp, youtube, threads,
+   twitter, x, bps, kbbi, unesco, apjii, senin, selasa, rabu, kamis, jumat, sabtu, minggu, lebaran, ramadan, natal]
+
+# source:
+#   none     no source rules
+#   flag     needsSource true → needs review
+#   required the AI must name a source and its confidence; always reviewed by the owner (shown on the draft)
+#   strict   as required, and the post must carry a number, a source and a year, else it is rejected
+#   story    written from the topic and the uploaded context only; always reviewed (never a real personal claim)
+# seedTheme: true = one of seedThemes is offered to the model as an optional angle.
+# label / icon / blurb: how the type appears in the brief form (icon = Material Symbols name).
+types:
+  educational:
+    label: Educational
+    icon: lightbulb
+    blurb: A short fact or tip in plain words
+    weight: 3
+    source: required
+    maxSentences: 4
+    guide: |
+      Fakta atau tips singkat yang mudah dipahami pembaca awam.
+      Format: hook 1 kalimat yang menarik perhatian, isi 1-2 kalimat yang menjelaskan fakta atau tips, penutup ringan bila perlu.
+      Bahasa sehari-hari, bukan gaya textbook atau akademis, tanpa jargon yang tidak perlu.
+      Inspirasi gaya: penjelasan awam ala @jiemiardian, fakta dengan sentuhan humor ala @idwiki, konteks sejarah ala @historia_id,
+      ketepatan istilah ala @ivanlanin. Hanya karakteristik umum; jangan meniru kalimat khas atau identitas mereka.
+      Klaim faktual wajib punya sourceNote: lembaga atau penerbit yang nyata, judul, dan tahun. Pemilik akan memeriksanya sebelum tayang.
+
+  educational_thread:
+    label: Thread
+    icon: format_list_numbered
+    blurb: A numbered how-to or list, 5-10 parts
+    weight: 1
+    source: flag
+    thread: { min: 5, max: 10, marker: "🧵" }
+    guide: |
+      Utas berisi tutorial, rekomendasi, panduan, atau daftar informatif.
+      Format: text = hook kuat yang diakhiri penanda 🧵. thread = 5-10 bagian bernomor ("1. ...", "2. ...", berurutan),
+      lalu satu bagian terakhir tanpa nomor berisi rangkuman dan ajakan berdiskusi.
+      Informasi bertahap dan logis, tanpa pengulangan dan kalimat pengisi; tiap bagian harus menambah sesuatu.
+      Inspirasi: judul menggelitik dan struktur utas ala @asumsico.
+      Bila utas memuat klaim faktual tanpa sumber di bahan, isi needsSource true.
+
+  random_receh:
+    label: Light humor
+    icon: sentiment_very_satisfied
+    blurb: One-line wordplay with the punchline last
+    weight: 2
+    seedTheme: true
+    source: none
+    maxSentences: 1
+    guide: |
+      Humor ringan, garing, wordplay, atau pantun receh.
+      Satu kalimat, punchline di bagian akhir, tanpa penjelasan setelah punchline.
+      Spontan, singkat, mudah dipahami; utamakan permainan kata atau kejutan sederhana, bukan humor yang butuh konteks panjang.
+
+  one_liner_satire:
+    label: Satire
+    icon: theater_comedy
+    blurb: A relatable ironic observation, 1-2 sentences
+    weight: 2
+    seedTheme: true
+    source: none
+    maxSentences: 2
+    noHashtags: true
+    guide: |
+      Observasi satir tentang kehidupan sehari-hari yang relatable (kerja, teknologi, pendidikan, hubungan sosial).
+      1-2 kalimat, tanpa hashtag. Ironi atau observasi sosial yang cerdas.
+      Boleh tajam, tapi tidak menyerang individu atau kelompok. Inspirasi: @plisitin, @hati2diInternet, @yeahmahasiswa.
+
+  spontan:
+    label: Spontaneous
+    icon: chat_bubble
+    blurb: A casual confession, menfess style
+    weight: 2
+    seedTheme: true
+    source: none
+    guide: |
+      Pikiran spontan, curhat ringan, atau pengakuan sehari-hari bernuansa menfess. Boleh diawali "menfess:".
+      Pembuka santai, tanpa struktur formal, boleh sedikit self-deprecating. Jangan terasa seperti artikel.
+      Jangan menyajikan cerita pribadi spesifik seolah benar-benar dialami seseorang; tetap pada situasi umum yang relatable.
+      Inspirasi: karakteristik umum percakapan @collegemenfess dan @tanyarlfess.
+
+  question_poll:
+    label: Question / poll
+    icon: ballot
+    blurb: An easy question, optionally 2-4 options
+    weight: 2
+    seedTheme: true
+    source: none
+    question: true
+    guide: |
+      Pertanyaan singkat dan jelas yang mudah dijawab, untuk memancing interaksi.
+      Bila memakai pilihan, tulis 2-4 opsi di baris terpisah (A. / B. / C. / D.) yang relevan dan mudah dibedakan.
+      Jangan memaksakan opsi bila pertanyaan terbuka lebih cocok. Hindari pertanyaan yang terlalu luas.
+
+  hot_take:
+    label: Hot take
+    icon: local_fire_department
+    blurb: A firm counter-opinion with one reason
+    weight: 2
+    seedTheme: true
+    source: none
+    maxSentences: 3
+    guide: |
+      Opini kontra-arus yang aman dan mengundang diskusi: satu klaim tegas plus satu alasan pendukung yang jelas.
+      Tidak kontroversial demi engagement, tidak menyerang individu, kelompok, atau identitas.
+      Sajikan sebagai opini, bukan fakta objektif.
+
+  storytelling:
+    label: Story
+    icon: auto_stories
+    blurb: Retells one of your own stories, nothing added
+    weight: 1
+    source: story
+    guide: |
+      Cerita singkat dan bermakna tentang topik.
+      Alur: awal (konteks atau pemicu), tengah (kejadian, konflik kecil, perubahan sudut pandang), akhir (hasil atau refleksi).
+      Bangun hanya dari topik dan konteks yang diunggah pemilik. Jangan menyajikan pengalaman pribadi yang dikarang sebagai kejadian nyata:
+      bila konteks tidak memuat kejadian nyata, tulis sebagai skenario yang relatable ("bayangin...", "ada orang yang...") atau sudut pandang orang ketiga.
+      Jangan menyebut nama, tempat, atau angka yang tidak ada di masukan.
+      Ceritanya harus muat dalam batas platform (280 karakter di X); bila butuh ruang lebih, bagi jadi thread[] dan tiap bagian tetap dalam batas.
+    allowThread: true
+
+  data_stat:
+    label: Data & stats
+    icon: monitoring
+    blurb: A number with its source, year and insight
+    weight: 1
+    source: strict
+    guide: |
+      Statistik menarik plus insight singkat. Wajib: angka utama, sumber data, tahun data, lalu interpretasi singkat.
+      Pakai hanya angka yang kamu yakin benar dan bersumber nyata (lembaga, judul, tahun); jangan mengarang angka, sumber, atau tahun.
+      Isi sourceNote dengan sumber dan tahunnya. Bila tidak yakin, turunkan confidence dan pilih fakta lain yang lebih kamu yakini.
+      Bedakan data dari interpretasi; perhatikan satuan dan periode agar tidak menyesatkan.
+
+  humor_dakwah_atau_nilai:
+    label: Humor with a value
+    icon: volunteer_activism
+    blurb: Light humor carrying a positive message
+    weight: 0
+    seedTheme: true
+    source: none
+    guide: |
+      Humor ringan yang membawa pesan moral atau nilai positif. Pesan harus jelas, nada ramah dan tidak menggurui.
+      Humor adalah sarana, bukan pengganti substansi. Jangan merendahkan keyakinan atau kelompok mana pun.
+      Inspirasi: karakteristik umum humor @NUgarislucu.

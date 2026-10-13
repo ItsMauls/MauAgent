@@ -33,7 +33,7 @@ export type AgendaKind = "publish" | "deadline" | "approval" | "budget";
 export type AgendaItem = { kind: AgendaKind; day: string; at: Date | null; title: string; href: string };
 
 type Input = {
-  jobs: { campaignId: string; platform: string; scheduledAt: Date | null; handle: string }[];
+  jobs: { campaignId: string | null; agentTaskId?: string | null; platform: string; scheduledAt: Date | null; handle: string }[];
   campaigns: { id: string; status: string; product: string; deadline: string; gateStartedAt: Date | null }[];
 };
 
@@ -42,7 +42,11 @@ export function agendaItems(i: Input, tz: string): AgendaItem[] {
   const items: AgendaItem[] = [];
   for (const j of i.jobs)
     if (j.scheduledAt)
-      items.push({ kind: "publish", day: dayKey(j.scheduledAt, tz), at: j.scheduledAt, title: `Publish to ${j.platform} @${j.handle}`, href: `/campaigns/${j.campaignId}?tab=publication` });
+      items.push({
+        kind: "publish", day: dayKey(j.scheduledAt, tz), at: j.scheduledAt, title: `Publish to ${j.platform} @${j.handle}`,
+        // A text post has no campaign: its schedule lives on the task that generated it.
+        href: j.campaignId ? `/campaigns/${j.campaignId}?tab=publication` : `/boards/roles?role=socmed-specialist&tab=task${j.agentTaskId ? `&task=${j.agentTaskId}` : ""}`,
+      });
   for (const c of i.campaigns) {
     if (isDay(c.deadline)) items.push({ kind: "deadline", day: c.deadline, at: null, title: `Deadline: ${c.product}`, href: `/campaigns/${c.id}` });
     const gate = c.status === "AWAITING_APPROVAL" ? "approval" : c.status === "AWAITING_BUDGET" ? "budget" : null;

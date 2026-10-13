@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 import { NavLinks } from "./nav";
 import { db } from "@/lib/db";
+import { connectionProblem } from "@/lib/connections";
 import { auth0 } from "@/lib/auth0";
 import { QUEUE_STATUSES, StatusPill } from "./pills";
 import { boardSnapshot, roleBadges } from "@/lib/boards/snapshot";
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [approvalCount, alerts, session, snapshot] = await Promise.all([
+  const [approvalCount, alerts, session, snapshot, connectionAlert] = await Promise.all([
     db.campaign.count({ where: { status: { in: [...QUEUE_STATUSES] } } }),
     // Notifications = campaigns that need the user right now (queue + permanent failures).
     db.campaign.findMany({
@@ -28,6 +29,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     auth0.getSession(),
     // Sidebar status dots must never break the shell.
     boardSnapshot().catch(() => null),
+    Promise.all([db.socialAccount.findMany({ where: { publisher: "buffer" }, select: { publisher: true, active: true, status: true } }), db.integrationStatus.findUnique({ where: { id: "buffer" } })])
+      .then(([accounts, health]) => connectionProblem(accounts, health))
+      .catch(() => false),
   ]);
   const user = session?.user;
   return (
@@ -44,7 +48,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <span className="text-lg font-bold tracking-tight">MauAgent</span>
               <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand">AI OS</span>
             </Link>
-            <NavLinks approvalCount={approvalCount} roles={snapshot ? roleBadges(snapshot) : undefined} />
+            <NavLinks approvalCount={approvalCount} roles={snapshot ? roleBadges(snapshot) : undefined} connectionAlert={connectionAlert} />
           </div>
         </aside>
         <div className="md:pl-72">

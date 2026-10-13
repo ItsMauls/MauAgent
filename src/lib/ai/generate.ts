@@ -70,7 +70,8 @@ export type Deps = {
   sleep?: (ms: number) => Promise<void>;
 };
 
-export type GenOpts = CallCtx & { system?: string; config?: Partial<AiConfig>; deps?: Deps };
+/** `images` are data: or https URLs sent with the prompt; the model must accept images (see AI_VISION_MODEL). */
+export type GenOpts = CallCtx & { system?: string; config?: Partial<AiConfig>; deps?: Deps; images?: string[] };
 
 /** Thrown when a cap blocks a call. Not retried: Inngest marks the step failed and the error shows on the Pipeline page. */
 export class AiBudgetError extends NonRetriableError {}
@@ -137,7 +138,7 @@ export async function generateStructured<T extends z.ZodTypeAny>(role: string, p
   const jsonSchema = z.toJSONSchema(schema, { io: "input", unrepresentable: "any" });
   const messages: ChatBody["messages"] = [
     { role: "system", content: `${system}\n\nReply with one JSON object only, matching this JSON schema:\n${JSON.stringify(jsonSchema)}`.trim() },
-    { role: "user", content: prompt },
+    { role: "user", content: opts.images?.length ? [{ type: "text", text: prompt }, ...opts.images.map((url) => ({ type: "image_url" as const, image_url: { url } }))] : prompt },
   ];
   const keys = { primary: env.AI_API_KEY, fallback: settings.enableFallbackKey ? env.AI_API_KEY_FALLBACK : undefined };
 

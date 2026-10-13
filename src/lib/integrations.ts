@@ -55,8 +55,8 @@ const notBuilt = (summary: string) => () => ({ state: "inactive" as const, summa
 const soon = () => ({ state: "soon" as const, summary: "Outside v1 scope", details: [] });
 
 export const INTEGRATIONS: Entry[] = [
-  { id: "instagram", name: "Instagram", icon: "photo_camera", href: "/accounts", status: social("instagram") },
-  { id: "tiktok", name: "TikTok", icon: "music_note", href: "/accounts", status: social("tiktok") },
+  { id: "instagram", name: "Instagram", icon: "photo_camera", href: "/connections", status: social("instagram") },
+  { id: "tiktok", name: "TikTok", icon: "music_note", href: "/connections", status: social("tiktok") },
   { id: "openrouter", name: "OpenRouter (LLM)", icon: "auto_awesome", href: "/settings/ai", status: checked("openrouter", "AI_API_KEY") },
   { id: "seedance", name: "Seedance (video)", icon: "movie", href: "/settings", status: keyOnly("ARK_API_KEY") },
   { id: "s3", name: "S3 storage", icon: "cloud", href: "/settings", status: checked("s3") },
@@ -64,7 +64,7 @@ export const INTEGRATIONS: Entry[] = [
   { id: "elevenlabs", name: "ElevenLabs", icon: "graphic_eq", href: "/settings", status: notBuilt("Not built yet") },
   { id: "apify", name: "Apify TikTok Trends", icon: "trending_up", href: "/trends", status: checked("apify", "APIFY_API_TOKEN") },
   { id: "vidiq", name: "vidIQ", icon: "trending_up", href: "/settings", status: notBuilt("Not built yet") },
-  { id: "buffer", name: "Buffer (publishing)", icon: "send", href: "/settings", status: checked("buffer", "BUFFER_API_KEY") },
+  { id: "buffer", name: "Buffer (publishing)", icon: "send", href: "/connections", status: checked("buffer", "BUFFER_API_KEY") },
   { id: "threads", name: "Threads", icon: "alternate_email", href: "/settings", status: soon },
   { id: "notion", name: "Notion", icon: "description", href: "/settings", status: soon },
 ];

@@ -56,7 +56,7 @@ enum ReasoningEffort {
 }
 
 model BrandKit {
-  id         String     @id @default(cuid())
+  id         String          @id @default(cuid())
   name       String
   logoUrl    String?
   palette    Json?
@@ -78,6 +78,8 @@ model Setting {
   memoryTokenBudget  Int         @default(800)
   // Owner's time zone: Boards agenda days and dates.
   timezone           String      @default("Asia/Jakarta")
+  // Style guide distilled from the owner's own tweets (editable). Read by the Socmed Specialist when writing posts.
+  writingVoice       String?
 }
 
 // Cached result of the free health checks (integrations-health job). Boards reads this, never the provider.
@@ -89,25 +91,25 @@ model IntegrationStatus {
 }
 
 model Campaign {
-  id            String         @id @default(cuid())
-  brandKitId    String?
-  brandKit      BrandKit?      @relation(fields: [brandKitId], references: [id])
-  clientBrief   Json
-  status        CampaignStatus @default(DRAFTING)
-  budgetCapUsd  Decimal        @db.Decimal(10, 2)
-  defaultSource VideoSource
-  finalCutKey   String?
+  id              String          @id @default(cuid())
+  brandKitId      String?
+  brandKit        BrandKit?       @relation(fields: [brandKitId], references: [id])
+  clientBrief     Json
+  status          CampaignStatus  @default(DRAFTING)
+  budgetCapUsd    Decimal         @db.Decimal(10, 2)
+  defaultSource   VideoSource
+  finalCutKey     String?
   // Latest Account Team QC output (history lives in Artifact "accountTeam").
   approvalPackage Json?
-  createdAt    DateTime       @default(now())
-  runs          Run[]
-  artifacts     Artifact[]
-  shots         Shot[]
-  decisions     Decision[]
-  costs         CostEntry[]
-  publishJobs   PublishJob[]
-  creativeAssets CreativeAsset[]
-  messages      AgentMessage[]
+  createdAt       DateTime        @default(now())
+  runs            Run[]
+  artifacts       Artifact[]
+  shots           Shot[]
+  decisions       Decision[]
+  costs           CostEntry[]
+  publishJobs     PublishJob[]
+  creativeAssets  CreativeAsset[]
+  messages        AgentMessage[]
 
   @@index([status])
 }
@@ -176,18 +178,18 @@ model Step {
 }
 
 model Artifact {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   // Null for the output of a direct task (Boards workspace) that has not been sent to a campaign.
   campaignId  String?
-  campaign    Campaign?  @relation(fields: [campaignId], references: [id])
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
   // Direct task that produced it (or, on a campaign copy, the task it was seeded from).
   agentTaskId String?
-  agentRole  String
-  version    Int
-  payload    Json
-  costUsd    Decimal  @default(0) @db.Decimal(10, 4)
-  runId      String?
-  createdAt  DateTime @default(now())
+  agentRole   String
+  version     Int
+  payload     Json
+  costUsd     Decimal   @default(0) @db.Decimal(10, 4)
+  runId       String?
+  createdAt   DateTime  @default(now())
 
   @@unique([campaignId, agentRole, version])
   @@index([agentRole, createdAt])
@@ -278,6 +280,12 @@ model AiSettings {
   maxCostPerCallUsd Decimal         @default(0.5) @db.Decimal(10, 4)
   monthlyTokenCap   Int             @default(5000000)
   enableFallbackKey Boolean         @default(true)
+  // Image generation: ordered provider list (first = preferred, rest = fallback) and optional model per provider.
+  imageProviders    String          @default("magichour,modelark,openrouter")
+  imageModels       Json            @default("{}")
+  // Video generation, same shape. Providers: byteplus (Seedance), magichour.
+  videoProviders    String          @default("byteplus,magichour")
+  videoModels       Json            @default("{}")
 }
 
 // Apify TikTok Trends settings, one row per source and brand (null = global). Token stays in env.
@@ -402,6 +410,7 @@ enum Platform {
   instagram
   tiktok
   threads
+  twitter
 }
 
 enum PublisherKind {
@@ -409,6 +418,21 @@ enum PublisherKind {
   tiktok_inbox
   orshot
   buffer
+}
+
+enum AccountStatus {
+  connected
+  needs_reauth
+  disabled
+  missing
+}
+
+// How a job is handed to Buffer: next queue slot, exact time, draft (never posts), or immediately.
+enum PublishMode {
+  queue
+  scheduled
+  draft
+  now
 }
 
 enum PublishStatus {
@@ -422,55 +446,89 @@ enum PublishStatus {
 // Connected social account (many per platform and per brand). Tokens are AES-GCM encrypted (src/lib/crypto.ts)
 // and never selected for the client: pages use ACCOUNT_PUBLIC_SELECT (src/lib/accounts.ts).
 model SocialAccount {
-  id                String        @id @default(cuid())
-  platform          Platform
-  platformUserId    String
-  handle            String
-  accountType       String?
-  brandKitId        String?
-  brandKit          BrandKit?     @relation(fields: [brandKitId], references: [id])
-  timezone          String        @default("Asia/Jakarta")
-  accessTokenEnc    String
-  refreshTokenEnc   String?
-  tokenExpiresAt    DateTime?
-  refreshExpiresAt  DateTime?
-  scopes            String[]
+  id                   String        @id @default(cuid())
+  platform             Platform
+  platformUserId       String
+  handle               String
+  accountType          String?
+  brandKitId           String?
+  brandKit             BrandKit?     @relation(fields: [brandKitId], references: [id])
+  timezone             String        @default("Asia/Jakarta")
+  accessTokenEnc       String
+  refreshTokenEnc      String?
+  tokenExpiresAt       DateTime?
+  refreshExpiresAt     DateTime?
+  scopes               String[]
   // Entered by hand: not_submitted | pending | approved | rejected (TikTok only).
-  tiktokAuditStatus String?
-  publisher         PublisherKind
-  active            Boolean       @default(true)
-  lastError         String?
-  quotaUsage        Int?
-  quotaTotal        Int?
-  quotaCheckedAt    DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  publishJobs       PublishJob[]
+  tiktokAuditStatus    String?
+  publisher            PublisherKind
+  // For Buffer channels `active` is "enabled for publishing"; status mirrors the channel's state in Buffer.
+  active               Boolean       @default(true)
+  status               AccountStatus @default(connected)
+  isDefaultForPlatform Boolean       @default(false)
+  lastSyncedAt         DateTime?
+  avatarUrl            String?
+  lastError            String?
+  quotaUsage           Int?
+  quotaTotal           Int?
+  quotaCheckedAt       DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  publishJobs          PublishJob[]
 
   @@unique([platform, platformUserId])
 }
 
 // One job per campaign per target account. Posting itself arrives with the Officer workspace (Stage 5).
 model PublishJob {
-  id              String        @id @default(cuid())
-  campaignId      String
-  campaign        Campaign      @relation(fields: [campaignId], references: [id])
-  socialAccountId String
-  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id])
-  platform        Platform
-  status          PublishStatus @default(draft)
-  caption         String?
-  hashtags        String[]
-  scheduledAt     DateTime?
-  postId          String?
-  permalink       String?
-  error           String?
-  // campaignId:socialAccountId — one job per account, retries never duplicate.
-  idemKey         String        @unique
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id               String           @id @default(cuid())
+  // Null for a text post from a Socmed Specialist task: those have no campaign and no video.
+  campaignId       String?
+  campaign         Campaign?        @relation(fields: [campaignId], references: [id])
+  // The generation task this post came from (text posts only).
+  agentTaskId      String?
+  agentTask        AgentTask?       @relation(fields: [agentTaskId], references: [id])
+  socialAccountId  String
+  socialAccount    SocialAccount    @relation(fields: [socialAccountId], references: [id])
+  platform         Platform
+  status           PublishStatus    @default(draft)
+  caption          String?
+  hashtags         String[]
+  // Thread parts AFTER `caption` (which is part 1). Empty = a single post.
+  thread           String[]         @default([])
+  scheduledAt      DateTime?
+  postId           String?
+  permalink        String?
+  error            String?
+  mode             PublishMode      @default(now)
+  attempt          Int              @default(1)
+  lastPolledAt     DateTime?
+  // Text posts that state a fact: the source the AI named and how sure it said it was (high|medium|low).
+  // Shown on the draft so the owner can check it before the post is scheduled.
+  sourceNote       String?
+  sourceConfidence String?
+  metricSnapshots  MetricSnapshot[]
+  // campaignId:socialAccountId:attempt (campaign video) | task:agentTaskId:slot:socialAccountId (text post).
+  // A retry makes a new attempt only when the last one never got a postId.
+  idemKey          String           @unique
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([socialAccountId, status])
+  @@index([agentTaskId])
+}
+
+// Post metrics pulled from Buffer at T+1h, T+24h and T+7d after the post is sent. Only what Buffer returns is stored.
+model MetricSnapshot {
+  id           String     @id @default(cuid())
+  publishJobId String
+  publishJob   PublishJob @relation(fields: [publishJobId], references: [id])
+  window       String // 1h | 24h | 7d
+  source       String     @default("buffer")
+  capturedAt   DateTime   @default(now())
+  metrics      Json // { items: [{ type, name, value, unit }], metricsUpdatedAt?, reason? }
+
+  @@unique([publishJobId, window])
 }
 
 model PriceBook {
@@ -494,23 +552,25 @@ enum TaskStatus {
 
 // A direct task from a Boards workspace: one agent runs alone, outside the campaign pipeline.
 model AgentTask {
-  id               String     @id @default(cuid())
+  id               String       @id @default(cuid())
   agentRole        String
   input            Json
-  status           TaskStatus @default(QUEUED)
+  status           TaskStatus   @default(QUEUED)
   // Retry = attempt + 1; the Inngest event id is taskId:attempt.
-  attempt          Int        @default(1)
-  artifactId       String?    @unique
+  attempt          Int          @default(1)
+  artifactId       String?      @unique
   // Campaign created by "Send to flow".
   campaignId       String?
   // Hand-off between agents (e.g. Content Creator asks the Talent Manager).
   requestedByRole  String?
-  estUsd           Decimal    @default(0) @db.Decimal(10, 4)
-  costUsd          Decimal    @default(0) @db.Decimal(10, 4)
-  confirmedOverCap Boolean    @default(false)
+  estUsd           Decimal      @default(0) @db.Decimal(10, 4)
+  costUsd          Decimal      @default(0) @db.Decimal(10, 4)
+  confirmedOverCap Boolean      @default(false)
   error            String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  // Text posts scheduled from this task's output (Socmed Specialist).
+  publishJobs      PublishJob[]
 
   @@index([agentRole, status])
 }
@@ -543,4 +603,22 @@ model AgentFeedback {
 
   @@index([agentRole, createdAt])
   @@index([campaignId])
+}
+
+enum ContentFileKind {
+  text
+  image
+}
+
+// Context the owner uploads for text posts (src/lib/content): notes and documents as text, pictures as an AI
+// description. The posts read it as background data; nothing in it is published as is.
+model ContentFile {
+  id        String          @id @default(cuid())
+  name      String
+  mime      String
+  kind      ContentFileKind
+  sizeBytes Int
+  // Text files: the extracted text (capped). Images: what the AI saw in the picture.
+  content   String
+  createdAt DateTime        @default(now())
 }

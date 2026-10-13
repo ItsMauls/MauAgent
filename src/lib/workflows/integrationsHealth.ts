@@ -3,7 +3,6 @@ import { inngest } from "@/lib/inngest";
 import { db } from "@/lib/db";
 import { s3 } from "@/lib/s3";
 import { aiEnv, apifyEnv } from "@/lib/ai/env";
-import { bufferChannels } from "@/lib/providers/buffer";
 import { syncBufferAccounts } from "@/lib/bufferAccounts";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
@@ -26,13 +25,11 @@ const CHECKS: Record<string, () => Promise<string>> = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return "API token valid";
   },
+  // Read-only queries; also refreshes channel state. The summary holds counts and the organization id, never the key.
   buffer: async () => {
-    const wanted = ["instagram", "tiktok", "threads"];
-    await syncBufferAccounts(); // keeps channel state fresh daily
-    const have = new Set((await bufferChannels()).map((c) => c.service));
-    const missing = wanted.filter((s) => !have.has(s));
-    if (missing.length) throw new Error(`Connect in Buffer: ${missing.join(", ")}`);
-    return "API key valid · Instagram, TikTok, Threads channels";
+    const r = await syncBufferAccounts();
+    if (!r.linked) throw new Error("No Instagram, TikTok or Threads channel in Buffer: connect one there");
+    return `API key valid · ${r.linked} channel(s) · org ${r.organizationId}${r.missing ? ` · ${r.missing} missing` : ""}`;
   },
 };
 

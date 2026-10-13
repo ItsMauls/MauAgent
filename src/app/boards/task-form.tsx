@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { estimateTaskAction, requestTask, retryTask } from "./actions";
+import { estimateTaskAction, requestTask, retryTask, scrapTask } from "./actions";
 
 type Prop = {
   type?: string; title?: string; enum?: string[]; items?: { enum?: string[] }; ref?: string; library?: string; multiline?: boolean;
@@ -57,6 +57,7 @@ export function TaskForm({ slug, schema, refs, library, llm }: {
       setEst(null);
       setConfirm(false);
       router.refresh();
+      form.closest("dialog")?.close();
     });
   };
 
@@ -120,6 +121,26 @@ export function TaskForm({ slug, schema, refs, library, llm }: {
       </button>
       {!llm && <p className="text-xs text-ink-2">Deterministic code, no AI call: US$0.</p>}
     </form>
+  );
+}
+
+export function ScrapButton({ taskId }: { taskId: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <span>
+      <button
+        disabled={pending}
+        aria-label="Scrap this queued task"
+        title="Scrap: remove it before a worker picks it up"
+        onClick={() => confirm("Scrap this queued task? It will be removed.") && start(async () => { try { await scrapTask(taskId); router.refresh(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } })}
+        className="flex items-center gap-1 text-xs font-semibold text-red-700 hover:underline"
+      >
+        <span className="material-symbols-outlined !text-[16px]">delete</span>Scrap
+      </button>
+      {error && <span role="alert" className="ml-2 text-xs text-red-700">{error}</span>}
+    </span>
   );
 }
 

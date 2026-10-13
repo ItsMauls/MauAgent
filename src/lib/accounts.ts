@@ -8,6 +8,7 @@ export const ACCOUNT_PUBLIC_SELECT = {
   id: true, platform: true, platformUserId: true, handle: true, accountType: true, brandKitId: true, timezone: true,
   tokenExpiresAt: true, refreshExpiresAt: true, scopes: true, tiktokAuditStatus: true, publisher: true, active: true,
   lastError: true, quotaUsage: true, quotaTotal: true, quotaCheckedAt: true, createdAt: true,
+  status: true, isDefaultForPlatform: true, lastSyncedAt: true, avatarUrl: true,
 } satisfies Prisma.SocialAccountSelect;
 
 /** Tokens and profile returned by a provider after the OAuth code exchange (or a refresh). */

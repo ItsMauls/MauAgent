@@ -3,13 +3,15 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { accountManager, accountTeam, artDirector, creativeDirector, producer, promptPackage, type CallCtx } from "@/lib/agents";
+import { generatePosts } from "@/lib/content/generate";
+import { activeTypes } from "@/lib/content/config";
 import { estimateCallUsd } from "@/lib/ai/generate";
 import { topTrendRefs } from "@/lib/trends";
 import { generate } from "@/lib/ai/image";
 import { storyboardPdf } from "./storyboardPdf";
 import { uploadBuffer } from "@/lib/s3";
 import { renderCut } from "@/lib/media/renderCut";
-import { ClientBrief, CreativeBrief, InternalBrief, Platform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
+import { ClientBrief, CreativeBrief, InternalBrief, Platform, TextPlatform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
 import { budgetGate, latestPrice, monthSpent } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
 
@@ -49,6 +51,23 @@ export const briefFrom = (b: { objective?: string; product: string; audience: st
   });
 
 export const TASKS: Record<string, TaskDef> = {
+  socmedSpecialist: def({
+    output: "Text posts for X and Threads (single or thread)",
+    llm: true,
+    input: z.object({
+      topic: text("Topic: what to post about", 500),
+      objective: text("Goal"),
+      brand: z.string().trim().max(200).optional().meta({ title: "Account / brand (optional)" }),
+      audience: z.string().trim().min(1).max(500).meta({ title: "Niche / audience" }),
+      platforms: z.array(TextPlatform).min(1).meta({ title: "Platforms" }),
+      count: z.number().int().min(1).max(20).default(6).meta({ title: "How many posts" }),
+      // Empty = the weighted mix from config/content-types.yaml.
+      types: z.array(z.enum(activeTypes())).default([]).meta({ title: "Content types (empty = mix)" }),
+    }),
+    // Each post gets a content type (config/content-types.yaml), 3 variants and automatic checks (src/lib/content).
+    // The schedule panel on the result page lays them into day x time slots and pushes them to Buffer.
+    run: (i, c) => generatePosts(i, c.llm),
+  }),
   accountManager: def({
     output: "InternalBrief",
     llm: true,
@@ -202,7 +221,9 @@ export const PROMPT_OVERHEAD_CHARS = 3000;
 export async function estimateTask(role: string, input: unknown, refChars = 0) {
   const d = TASKS[role];
   if (!d?.llm) return 0;
-  return Math.round((await estimateCallUsd(role, JSON.stringify(input).length + refChars + PROMPT_OVERHEAD_CHARS)) * 10000) / 10000;
+  // A text-post batch makes one call per post (content types, src/lib/content).
+  const calls = role === "socmedSpecialist" ? Number((input as { count?: number }).count ?? 1) : 1;
+  return Math.round(calls * (await estimateCallUsd(role, JSON.stringify(input).length + refChars + PROMPT_OVERHEAD_CHARS)) * 10000) / 10000;
 }
 
 /** Direct tasks have no campaign, so only the monthly cap applies. Enforced in the server action and again in Inngest. */

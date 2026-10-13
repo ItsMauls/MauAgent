@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { AI_ROLES, AiSettingsInput, clearAiSettingsCache } from "@/lib/ai/settings";
+import { AI_ROLES, AiSettingsInput, IMAGE_PROVIDERS, ImageModels, VIDEO_PROVIDERS, VideoModels, clearAiSettingsCache, parseImageProviders, parseVideoProviders } from "@/lib/ai/settings";
 import { generateStructured } from "@/lib/ai/generate";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -51,4 +51,18 @@ export async function testAiConnection(): Promise<TestResult> {
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message.slice(0, 300) : "Failed" };
   }
+}
+
+// ---------- image + video providers (/settings/ai) ----------
+
+/** Form: `order.0..2` / `vorder.0..1` = provider id or "" (off), `model.<provider>` / `vmodel.<provider>` = optional model id. */
+export async function saveImageSettings(form: FormData) {
+  const imageProviders = parseImageProviders([0, 1, 2].map((i) => str(form, `order.${i}`)).join(","));
+  const imageModels = ImageModels.parse(Object.fromEntries(IMAGE_PROVIDERS.map((p) => [p, str(form, `model.${p}`)]).filter(([, v]) => v)));
+  const videoProviders = parseVideoProviders([0, 1].map((i) => str(form, `vorder.${i}`)).join(","));
+  const videoModels = VideoModels.parse(Object.fromEntries(VIDEO_PROVIDERS.map((p) => [p, str(form, `vmodel.${p}`)]).filter(([, v]) => v)));
+  const data = { imageProviders: imageProviders.join(","), imageModels, videoProviders: videoProviders.join(","), videoModels };
+  await db.aiSettings.upsert({ where: { id: "default" }, create: data, update: data });
+  clearAiSettingsCache();
+  revalidatePath("/settings/ai");
 }

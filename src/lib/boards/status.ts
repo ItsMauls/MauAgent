@@ -3,13 +3,15 @@
 /** Short human title for a task from its input. */
 export const taskTitle = (input: unknown) => {
   const i = (input ?? {}) as Record<string, unknown>;
-  const s = [i.idea, i.objective, i.request, i.product].find((v) => typeof v === "string" && v) as string | undefined;
+  const s = [i.topic, i.idea, i.objective, i.request, i.product].find((v) => typeof v === "string" && v) as string | undefined;
   return s ? (s.length > 80 ? `${s.slice(0, 79)}…` : s) : "Task";
 };
 
 export type AgentState = "busy" | "waiting" | "idle";
 
-export type WorkItem = { key: string; title: string; stage: string; since: Date; state: Exclude<AgentState, "idle">; href: string };
+/** Kanban column: queued tasks have not started (they can still be scrapped), working is running, waiting is parked at a gate. */
+export type WorkColumn = "queued" | "working" | "waiting";
+export type WorkItem = { key: string; title: string; stage: string; since: Date; state: Exclude<AgentState, "idle">; column: WorkColumn; href: string; taskId?: string };
 
 export type Snapshot = {
   /** Running Steps of running Runs (plus the videographer while Seedance shots generate). */
@@ -31,16 +33,17 @@ export function roleWork(agentRole: string, s: Snapshot): { state: AgentState; i
   const items: WorkItem[] = [
     ...s.running
       .filter((r) => r.agentRole === agentRole)
-      .map((r) => ({ key: `campaign:${r.campaignId}`, title: r.product, stage: "Working", since: r.startedAt, state: "busy" as const, href: `/campaigns/${r.campaignId}` })),
+      .map((r) => ({ key: `campaign:${r.campaignId}`, title: r.product, stage: "Working", since: r.startedAt, state: "busy" as const, column: "working" as const, href: `/campaigns/${r.campaignId}` })),
     ...s.tasks
       .filter((t) => t.agentRole === agentRole)
       .map((t) => ({
         key: `task:${t.id}`, title: t.title, stage: t.status === "RUNNING" ? "Direct task" : t.status === "QUEUED" ? "Task queued" : "Task waiting",
-        since: t.createdAt, state: t.status === "RUNNING" ? ("busy" as const) : ("waiting" as const), href: `/boards/${t.roleSlug}?tab=task&task=${t.id}`,
+        since: t.createdAt, state: t.status === "RUNNING" ? ("busy" as const) : ("waiting" as const), column: t.status === "RUNNING" ? ("working" as const) : t.status === "QUEUED" ? ("queued" as const) : ("waiting" as const),
+        href: `/boards/roles?role=${t.roleSlug}&tab=task&task=${t.id}`, taskId: t.id,
       })),
     ...s.waiting
       .filter((w) => GATE_OWNER[w.status]?.role === agentRole)
-      .map((w) => ({ key: `campaign:${w.campaignId}`, title: w.product, stage: GATE_OWNER[w.status].stage, since: w.since, state: "waiting" as const, href: `/campaigns/${w.campaignId}` })),
+      .map((w) => ({ key: `campaign:${w.campaignId}`, title: w.product, stage: GATE_OWNER[w.status].stage, since: w.since, state: "waiting" as const, column: "waiting" as const, href: `/campaigns/${w.campaignId}` })),
   ];
   // One entry per campaign/task: busy beats waiting.
   const seen = new Map<string, WorkItem>();

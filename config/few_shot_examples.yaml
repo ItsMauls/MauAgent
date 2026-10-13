@@ -1,0 +1,103 @@
+# Original few-shot examples per content type. They show structure, tone and length, not the language:
+# a post is always written in the language of the topic. Every example must pass its own type's rules
+# (checked by src/lib/content/content.test.ts). Factual examples carry a checkable sourceNote.
+
+educational:
+  - text: Madu nyaris nggak pernah basi karena kadar airnya rendah dan sifatnya asam, jadi bakteri susah hidup di dalamnya. Yang basi biasanya bukan madunya, tapi wadah yang kemasukan air.
+    sourceNote: Smithsonian Magazine, "The Science Behind Honey's Eternal Shelf Life" (2013)
+    confidence: high
+  - text: Yang benar "mengubah", bukan "merubah". Kata dasarnya "ubah", sedangkan "rubah" itu hewan. Jadi kalau kamu merubah sesuatu, secara teknis kamu lagi berubah jadi rubah.
+    sourceNote: KBBI daring, lema "ubah" dan "rubah"
+    confidence: high
+  - text: Secara botani, pisang termasuk buah beri, sedangkan stroberi justru bukan. Ilmu tumbuhan memang suka bikin kita ragu sama isi kulkas sendiri.
+    sourceNote: Encyclopaedia Britannica, "Is a Banana a Berry?"
+    confidence: high
+  - text: Borobudur dibangun sekitar abad ke-8 sampai ke-9 di masa Wangsa Syailendra. Umurnya lebih tua dari Angkor Wat, dan sejak 1991 masuk daftar Warisan Dunia UNESCO.
+    sourceNote: UNESCO World Heritage List, "Borobudur Temple Compounds" (inscribed 1991)
+    confidence: high
+
+educational_thread:
+  - text: Password kamu mungkin lebih gampang ditebak daripada yang kamu kira. Ini cara bikin akun lebih aman tanpa harus hafal kode rumit 🧵
+    thread:
+      - 1. Pakai kalimat sandi, bukan kata sandi. Empat kata acak yang panjang lebih susah ditebak daripada satu kata dengan simbol aneh.
+      - 2. Satu akun, satu password. Kalau satu situs bocor, akun lain nggak ikut kebuka.
+      - 3. Pakai password manager biar kamu cukup ingat satu password utama.
+      - 4. Nyalakan verifikasi dua langkah, terutama di email. Email itu kunci cadangan semua akunmu.
+      - 5. Jangan kirim kode OTP ke siapa pun, termasuk yang ngaku petugas.
+      - Intinya, panjang dan unik lebih penting daripada rumit. Kamu sendiri sekarang pakai password manager atau masih andalkan ingatan?
+  - text: Mau mulai lari tapi tiap coba selalu ngos-ngosan di menit kelima? Ini urutan yang lebih masuk akal buat pemula 🧵
+    thread:
+      - 1. Mulai dari jalan cepat 20 menit, tiga kali seminggu. Badan perlu kebiasaan dulu, bukan kecepatan.
+      - 2. Masuk ke selang-seling, lari 1 menit lalu jalan 2 menit, ulangi beberapa kali.
+      - 3. Tiap minggu tambah porsi larinya sedikit, kurangi jalannya.
+      - 4. Atur tempo sampai kamu masih bisa ngobrol. Kalau nggak bisa ngomong, kamu kecepetan.
+      - 5. Kasih jeda sehari di antara hari lari supaya kaki sempat pulih.
+      - Kuncinya konsisten pelan-pelan, bukan langsung jauh. Kamu tim lari pagi atau sore?
+  - text: Laptop lemot nggak selalu harus diganti. Coba cek lima hal ini dulu sebelum keluar duit 🧵
+    thread:
+      - 1. Lihat aplikasi yang ikut nyala waktu laptop baru hidup, matikan yang nggak perlu.
+      - 2. Tutup tab browser yang numpuk. Puluhan tab itu makan memori diam-diam.
+      - 3. Sisakan ruang kosong di penyimpanan, jangan sampai penuh mepet.
+      - 4. Update sistem dan driver, kadang lemotnya karena bug lama.
+      - 5. Bersihkan debu di lubang kipas. Laptop yang kepanasan sengaja menurunkan kecepatannya.
+      - Kalau semua sudah dicoba dan masih lemot, baru deh pertimbangkan upgrade. Laptopmu udah umur berapa tahun?
+
+random_receh:
+  - text: Arus balik. Dompet pulang lebih ringan, perut lebih berat, mantan tetap nggak ikut balik.
+  - text: Aku mau jadi kopi aja, biar tiap pagi ada yang nyariin walaupun pahit.
+  - text: Ikan hiu beli roti, sabar ya gajian masih lama sekali.
+  - text: Katanya hidup harus seimbang, makanya habis makan besar aku langsung rebahan biar adil.
+
+one_liner_satire:
+  - text: Deadline tinggal besok, tapi inspirasi baru datang jam 11 malam. Otak kita ini freelancer yang minta DP dulu.
+  - text: Grup kantor sepi seharian, begitu jam pulang tiba langsung ramai diskusi kerjaan. Rajinnya selalu lembur sukarela.
+  - text: Aplikasi minta update tiap minggu biar lebih baik. Yang membaik cuma ukurannya.
+  - text: Katanya kuliah biar bisa berpikir kritis. Begitu kritis ke dosen, nilainya yang jadi kritis.
+
+spontan:
+  - text: "menfess: jam 2 pagi baru sadar tadi di grup salah kirim stiker. Ke atasan. Ada yang punya tips pindah negara?"
+  - text: "menfess: niatnya cuma buka HP sebentar buat cek jam. Sekarang udah tahu gosip tiga kota tapi tetap nggak tahu jam berapa."
+  - text: jujur tiap lihat orang olahraga pagi tuh aku termotivasi. Termotivasi buat narik selimut lagi.
+  - text: "menfess: dari pagi bilang 'nanti aku kerjain', sekarang udah malam dan 'nanti'-nya belum datang juga."
+
+question_poll:
+  - text: "Tim mana kamu: kerja jam 5 pagi atau jam 11 malam? Jujur aja, nggak ada yang ngukur."
+  - text: |-
+      Kalau cuma boleh pilih satu buat seumur hidup, kamu pilih yang mana?
+      A. Nasi goreng
+      B. Mie ayam
+      C. Bakso
+      D. Soto
+  - text: Hal kecil apa yang paling bikin hari kamu langsung membaik?
+  - text: |-
+      Notifikasi grup keluarga kamu biasanya gimana?
+      A. Dibaca semua
+      B. Dibisukan selamanya
+
+hot_take:
+  - text: Dashboard yang bagus bukan yang grafiknya paling banyak, tapi yang bikin orang berhenti nanya, "Angka ini dari mana?"
+  - text: Rapat satu jam yang bisa diganti satu pesan itu bukan kolaborasi, itu kebiasaan. Waktu orang juga anggaran.
+  - text: Bangun jam 4 pagi nggak otomatis bikin produktif. Yang bikin produktif itu tidur cukup, jam berapa pun kamu bangun.
+  - text: Belajar coding nggak harus mulai dari bahasa yang paling populer. Mulailah dari masalah yang pengin kamu selesaikan, alatnya menyusul.
+
+storytelling:
+  # Scenarios and context-based stories: nothing here is presented as the owner's real experience.
+  - text: Ada mahasiswa yang selalu menahan pertanyaan karena takut kelihatan bodoh. Suatu hari ada yang akhirnya angkat tangan, dan setengah kelas langsung lega karena mereka juga bingung. Pertanyaan yang ditahan cuma bikin bingung bareng-bareng.
+  - text: Bayangin presentasi pertama di kantor, slide kebalik urutannya dan baru sadar di tengah jalan. Ketawa sebentar, minta waktu, lanjut. Ternyata orang lebih ingat cara membereskannya daripada kesalahannya.
+  - text: Ada orang yang menunda bayar tagihan kecil karena merasa "nanti juga ingat". Dendanya akhirnya lebih besar dari tagihannya. Sejak itu semua tagihan dipasang pengingat, sekecil apa pun.
+
+data_stat:
+  - text: "Menurut Sensus Penduduk 2020 dari BPS, penduduk Indonesia ada 270,20 juta jiwa. Artinya tiap kebijakan nasional menyentuh lebih banyak orang daripada gabungan penduduk banyak negara."
+    sourceNote: BPS, Hasil Sensus Penduduk 2020 (Berita Resmi Statistik, Januari 2021)
+    confidence: high
+  - text: "Gen Z jadi kelompok terbesar di Indonesia: 27,94% penduduk menurut Sensus Penduduk 2020 BPS. Jadi kalau mau bicara ke mayoritas, nadanya perlu cocok buat mereka."
+    sourceNote: BPS, Hasil Sensus Penduduk 2020 (komposisi penduduk menurut generasi)
+    confidence: high
+  - text: "Survei APJII 2024 mencatat penetrasi internet Indonesia 79,5%. Sisanya, sekitar satu dari lima orang, masih belum terhubung, dan itu bukan angka kecil."
+    sourceNote: APJII, Survei Penetrasi Internet Indonesia 2024
+    confidence: high
+
+humor_dakwah_atau_nilai:
+  - text: Sedekah itu nggak bikin miskin. Yang bikin miskin itu checkout keranjang belanja jam 12 malam.
+  - text: Katanya sabar itu ada batasnya. Makanya dikasih antrean BPJS, biar kita tahu batasnya masih bisa digeser.
+  - text: Senyum itu ibadah, tapi senyum sendirian lihat HP di angkot tetap bikin orang sebelah waspada.

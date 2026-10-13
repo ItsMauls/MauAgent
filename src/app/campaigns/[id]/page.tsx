@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { presignGet } from "@/lib/s3";
 import { campaignSpent } from "@/lib/cost";
-import { DecisionButtons } from "../../ui";
+import { ApprovalDecision } from "../../approval/decision";
+import { PublicationTab } from "./publication";
 import { AssetsTab, ChangedKeys, Empty, ShotsTab } from "./shots";
 import { CampaignFeedback } from "../../boards/feedback";
 import { SourcePill, StatusPill } from "../../pills";
@@ -137,7 +138,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
             <p className="mt-1 text-sm text-ink-2">Review the 9:16 video before it is published. Captions, QC and version compare are on the Approval page.</p>
             {c.status === "AWAITING_APPROVAL" && (
               <div className="mt-6">
-                <DecisionButtons campaignId={c.id} shots={c.shots.map((s) => ({ shotId: s.shotId, source: s.source }))} />
+                <ApprovalDecision c={c} />
               </div>
             )}
           </div>
@@ -163,9 +164,7 @@ export default async function CampaignPage({ params, searchParams }: { params: P
         {tab === "shots" && <ShotsTab shots={c.shots} />}
         {tab === "assets" && <AssetsTab shots={c.shots} />}
         {tab === "decisions" && <><DecisionsTab decisions={c.decisions} /><CampaignFeedback campaignId={c.id} /></>}
-        {tab === "publication" && (
-          <Empty icon="share" text="Publishing to Instagram and TikTok is not built yet (PRD F11). Publish jobs, schedule, permalinks and Instagram quota will appear here." />
-        )}
+        {tab === "publication" && <PublicationTab campaignId={c.id} status={c.status} />}
       </section>
     </div>
   );

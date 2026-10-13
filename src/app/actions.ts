@@ -13,6 +13,8 @@ import { saveArtifact } from "@/lib/agents";
 import { presignPut } from "@/lib/s3";
 import { uploadImage } from "@/lib/cloudinary";
 import { syncBufferAccounts } from "@/lib/bufferAccounts";
+import { PublishTarget } from "@/lib/publish";
+import { checkTargets, createPublishJobs, createRetryJob } from "@/lib/publishPlan";
 import { recordAsset } from "@/lib/assets";
 import { campaignSpent, estimateRegenerate, videoPricePerSec } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
@@ -118,6 +120,7 @@ export async function decide(campaignId: string, input: DecisionInput) {
   const d = DecisionInput.parse(input);
   const c = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
   if (c.status !== "AWAITING_APPROVAL") throw new Error("Campaign is not awaiting approval");
+  if (d.type === "approve" && d.publishTargets?.length) await checkTargets(d.publishTargets); // fail here, not later inside the pipeline
   if (d.type === "regenerate") {
     const est = await getRegenerateEstimate(campaignId, d.shotIds);
     if (est.overCap && !d.confirmOverCap) throw new Error(`Regenerate would bring the total to US$${est.totalUsd} (cap US$${est.capUsd}). Confirm to continue.`);
@@ -268,43 +271,28 @@ export async function syncBuffer() {
 
 const PublishPlan = z.object({
   campaignId: z.string().min(1),
-  accountIds: z.array(z.string().min(1)).min(1, "Pick at least one account"),
-  // now = post right away; schedule = at scheduledAt (ISO, must be in the future).
-  when: z.enum(["now", "schedule"]),
-  scheduledAt: z.iso.datetime().optional(),
-  caption: z.string().trim().max(2200).default(""),
-  hashtags: z.array(z.string().trim().min(1)).max(30).default([]),
+  targets: z.array(PublishTarget).min(1, "Pick at least one account"),
 });
 
-/** Content Creator: pick the accounts and publish an approved campaign automatically now or at a set time. */
+/** Content Creator: publish an approved campaign through Buffer (queue, exact time, draft or now). */
 export async function planPublish(input: z.input<typeof PublishPlan>) {
   const d = PublishPlan.parse(input);
-  const at = d.when === "schedule" ? new Date(d.scheduledAt ?? "") : null;
-  if (at && !(at.getTime() > Date.now())) throw new Error("Pick a time in the future");
-  const c = await db.campaign.findUniqueOrThrow({ where: { id: d.campaignId } });
-  if (!c.finalCutKey || !["APPROVED", "PUBLISHED"].includes(c.status)) throw new Error("Only an approved campaign with a final cut can be published");
-  const accounts = await db.socialAccount.findMany({ where: { id: { in: d.accountIds }, active: true, publisher: "buffer" } });
-  if (accounts.length !== new Set(d.accountIds).size) throw new Error("Some accounts are inactive or not linked through Buffer");
-  const ids: string[] = [];
-  for (const a of accounts) {
-    const idemKey = `${d.campaignId}:${a.id}`;
-    if (await db.publishJob.findUnique({ where: { idemKey } })) throw new Error(`Already planned for @${a.handle}`);
-    const j = await db.publishJob.create({
-      data: {
-        campaignId: d.campaignId, socialAccountId: a.id, platform: a.platform, idemKey,
-        status: at ? "scheduled" : "draft", caption: d.caption || null, hashtags: d.hashtags, scheduledAt: at,
-      },
-    });
-    ids.push(j.id);
-  }
-  await inngest.send(ids.map((jobId) => ({ name: "publish/job", data: { jobId } })));
-  revalidatePath("/boards", "layout");
-  revalidatePath("/accounts");
+  const jobs = await createPublishJobs(d.campaignId, d.targets);
+  if (jobs.some((j) => !j.created)) throw new Error("Some of these accounts are already planned for this campaign");
+  await inngest.send(jobs.map((j) => ({ name: "publish/job", data: { jobId: j.id } })));
+  revalidatePath("/", "layout");
+}
+
+/** New attempt for a channel whose last attempt failed before Buffer accepted anything. */
+export async function retryPublish(jobId: string) {
+  const jobs = await createRetryJob(z.string().min(1).parse(jobId));
+  await inngest.send(jobs.filter((j) => j.created).map((j) => ({ name: "publish/job", data: { jobId: j.id } })));
+  revalidatePath("/", "layout");
 }
 
 /** Cancel a job that has not started yet; the sleeping Inngest run then skips it. */
 export async function cancelPublish(jobId: string) {
-  const { count } = await db.publishJob.updateMany({ where: { id: z.string().parse(jobId), status: { in: ["draft", "scheduled"], }, postId: null }, data: { status: "failed", error: "Cancelled" } });
+  const { count } = await db.publishJob.updateMany({ where: { id: z.string().parse(jobId), status: { in: ["draft", "scheduled"] }, postId: null }, data: { status: "failed", error: "Cancelled" } });
   if (!count) throw new Error("Already started; manage it in Buffer");
   revalidatePath("/boards", "layout");
 }

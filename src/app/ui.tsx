@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl, planPublish, refreshAccounts, cancelPublish, setAccountActive, syncBuffer, updateAccount } from "./actions";
+import { PublishTargetsPanel, usePublishTargets, type TargetOptions } from "./publishTargets";
+import { budgetDecision, confirmUpload, decide, getRegenerateEstimate, getUploadUrl, planPublish, refreshAccounts, cancelPublish, retryPublish, setAccountActive, syncBuffer, updateAccount } from "./actions";
 
 export function SourceToggle({ name, defaultValue }: { name: string; defaultValue: string }) {
   return (
@@ -73,7 +74,7 @@ export function UploadSlot({ shotDbId }: { shotDbId: string }) {
 }
 
 /** Run a server action with pending + error state. */
-function useAction() {
+export function useAction() {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const run = (fn: () => Promise<unknown>, after?: () => void) =>
@@ -89,19 +90,20 @@ function useAction() {
   return { pending, error, run };
 }
 
-const ErrorText = ({ error }: { error: string | null }) =>
+export const ErrorText = ({ error }: { error: string | null }) =>
   error ? <p role="alert" className="mt-2 text-sm font-medium text-red-700">{error}</p> : null;
 
-type Mode = null | "revise" | "regenerate";
+type Mode = null | "approve" | "revise" | "regenerate";
 type Estimate = Awaited<ReturnType<typeof getRegenerateEstimate>>;
 
 /** Approve / Revise / Regenerate / Reject. Every action creates a Decision and sends campaign/client.decision. */
-export function DecisionButtons({ campaignId, shots }: { campaignId: string; shots: { shotId: string; source: string }[] }) {
+export function DecisionButtons({ campaignId, shots, publish }: { campaignId: string; shots: { shotId: string; source: string }[]; publish?: TargetOptions }) {
   const { pending, error, run } = useAction();
   const [mode, setMode] = useState<Mode>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [est, setEst] = useState<Estimate | null>(null);
   const [confirmOver, setConfirmOver] = useState(false);
+  const targets = usePublishTargets(publish ?? { accounts: [], captions: {}, hashtags: [], platforms: [], timezone: "UTC" });
 
   const toggleShot = (id: string) => {
     const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
@@ -114,7 +116,7 @@ export function DecisionButtons({ campaignId, shots }: { campaignId: string; sho
   return (
     <div>
       <div className="flex flex-wrap gap-3">
-        <button disabled={pending} onClick={() => run(() => decide(campaignId, { type: "approve" }))} className="btn bg-ok text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)] hover:bg-emerald-600">
+        <button disabled={pending} aria-expanded={publish ? mode === "approve" : undefined} onClick={() => (publish ? setMode(mode === "approve" ? null : "approve") : run(() => decide(campaignId, { type: "approve" })))} className="btn bg-ok text-white shadow-[0_4px_14px_rgba(16,185,129,0.3)] hover:bg-emerald-600">
           <span className="material-symbols-outlined">check</span>Approve
         </button>
         <button disabled={pending} aria-expanded={mode === "revise"} onClick={() => setMode(mode === "revise" ? null : "revise")} className="btn-soft">
@@ -131,6 +133,19 @@ export function DecisionButtons({ campaignId, shots }: { campaignId: string; sho
           <span className="material-symbols-outlined">close</span>Reject
         </button>
       </div>
+
+      {mode === "approve" && publish && (
+        <div className="mt-4 space-y-4 rounded-2xl bg-canvas p-4">
+          <PublishTargetsPanel s={targets} />
+          <button
+            disabled={pending || !targets.ready}
+            onClick={() => confirm(`${targets.summary}?`) && run(() => decide(campaignId, { type: "approve", publishTargets: targets.targets }))}
+            className="btn bg-ok text-white hover:bg-emerald-600"
+          >
+            <span className="material-symbols-outlined">check</span>{targets.chosen.length ? "Approve and publish" : "Approve"}
+          </button>
+        </div>
+      )}
 
       {mode === "revise" && (
         <form
@@ -279,6 +294,7 @@ const PUBLISHERS: Record<string, [string, string][]> = {
   instagram: [["buffer", "Buffer"], ["instagram_graph", "Instagram Graph API"], ["orshot", "Orshot"]],
   tiktok: [["buffer", "Buffer"], ["tiktok_inbox", "TikTok inbox (draft)"], ["orshot", "Orshot"]],
   threads: [["buffer", "Buffer"]],
+  twitter: [["buffer", "Buffer"]],
 };
 
 /** Per-account settings (publisher, brand, type, time zone, TikTok audit) plus check / deactivate. */
@@ -384,7 +400,7 @@ export function BudgetField({ label, name, defaultValue, max, step }: { label: s
   );
 }
 
-export function SyncBufferButton() {
+export function SyncBufferButton({ compact = false }: { compact?: boolean }) {
   const { pending, error, run } = useAction();
   const router = useRouter();
   const [note, setNote] = useState<string | null>(null);
@@ -392,10 +408,12 @@ export function SyncBufferButton() {
     <div>
       <button
         disabled={pending}
-        onClick={() => run(async () => { const r = await syncBuffer(); setNote(`${r.linked} linked${r.deactivated ? `, ${r.deactivated} deactivated` : ""}.`); router.refresh(); })}
-        className="btn-primary"
+        onClick={() => run(async () => { const r = await syncBuffer(); setNote(`${r.linked} linked${r.added ? `, ${r.added} new` : ""}${r.missing ? `, ${r.missing} missing` : ""}.`); router.refresh(); })}
+        className={compact ? "flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft text-brand transition hover:bg-blue-100 disabled:opacity-60" : "btn-primary"}
+        aria-label="Sync from Buffer"
+        title="Sync from Buffer"
       >
-        <span className="material-symbols-outlined">sync</span>{pending ? "Syncing…" : "Sync from Buffer"}
+        <span className={`material-symbols-outlined ${compact && pending ? "animate-spin" : ""}`}>sync</span>{!compact && (pending ? "Syncing…" : "Sync from Buffer")}
       </button>
       {note && !pending && <p role="status" className="mt-1 text-sm text-emerald-700">{note}</p>}
       <ErrorText error={error} />
@@ -403,74 +421,55 @@ export function SyncBufferButton() {
   );
 }
 
-/** Content Creator: choose the accounts, then publish an approved campaign now or at a set time. */
-export function PublishForm({ campaigns, accounts }: {
-  campaigns: { id: string; label: string; caption: string }[];
-  accounts: { id: string; platform: string; handle: string }[];
+/** Content Creator: choose the accounts and how to publish an approved campaign through Buffer. */
+export function PublishForm({ campaigns, timezone }: {
+  campaigns: { id: string; label: string; options: Omit<TargetOptions, "timezone"> }[];
+  timezone: string;
 }) {
-  const { pending, error, run } = useAction();
-  const router = useRouter();
-  const [when, setWhen] = useState<"now" | "schedule">("now");
   const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? "");
-  const [caption, setCaption] = useState(campaigns[0]?.caption ?? "");
+  const c = campaigns.find((x) => x.id === campaignId);
   return (
-    <form
-      className="grid gap-4 rounded-2xl bg-canvas p-5"
-      action={(f) =>
-        run(async () => {
-          const at = String(f.get("at") ?? "");
-          await planPublish({
-            campaignId, when, caption,
-            accountIds: f.getAll("account").map(String),
-            scheduledAt: when === "schedule" && at ? new Date(at).toISOString() : undefined, // datetime-local = browser time
-            hashtags: String(f.get("hashtags") ?? "").split(/[\s,]+/).filter(Boolean),
-          });
-          router.refresh();
-        })
-      }
-    >
+    <div className="grid gap-4 rounded-2xl bg-canvas p-5">
       <label className="block">
         <span className="label">Approved campaign</span>
-        <select value={campaignId} onChange={(e) => { setCampaignId(e.target.value); setCaption(campaigns.find((c) => c.id === e.target.value)?.caption ?? ""); }} className="input">
-          {campaigns.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="input">
+          {campaigns.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
         </select>
       </label>
-      <fieldset>
-        <legend className="label">Post to</legend>
-        <div className="flex flex-wrap gap-2">
-          {accounts.map((a) => (
-            <label key={a.id} className="cursor-pointer">
-              <input type="checkbox" name="account" value={a.id} className="peer sr-only" />
-              <span className="pill border-line bg-white px-4 py-2 text-ink-2 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand">{a.platform} @{a.handle}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend className="label">When</legend>
-        <div className="flex flex-wrap items-center gap-2">
-          {([["now", "Publish automatically now"], ["schedule", "Schedule"]] as const).map(([v, t]) => (
-            <label key={v} className="cursor-pointer">
-              <input type="radio" checked={when === v} onChange={() => setWhen(v)} className="peer sr-only" />
-              <span className="pill border-line bg-white px-4 py-2 text-ink-2 peer-checked:border-brand peer-checked:bg-brand-soft peer-checked:text-brand">{t}</span>
-            </label>
-          ))}
-          {when === "schedule" && <input type="datetime-local" name="at" required className="input w-auto" />}
-        </div>
-      </fieldset>
-      <label className="block">
-        <span className="label">Caption</span>
-        <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} maxLength={2200} className="input" />
-      </label>
-      <label className="block">
-        <span className="label">Hashtags (space separated, no #)</span>
-        <input name="hashtags" className="input" />
-      </label>
+      {c && <PublishCampaign key={c.id} campaignId={c.id} options={{ ...c.options, timezone }} />}
+    </div>
+  );
+}
+
+function PublishCampaign({ campaignId, options }: { campaignId: string; options: TargetOptions }) {
+  const { pending, error, run } = useAction();
+  const router = useRouter();
+  const t = usePublishTargets(options);
+  return (
+    <div className="space-y-4">
+      <PublishTargetsPanel s={t} />
       <div>
-        <button disabled={pending || !campaignId} className="btn-primary">{pending ? "Queuing…" : when === "now" ? "Publish" : "Schedule"}</button>
+        <button
+          disabled={pending || !t.chosen.length || !t.ready}
+          onClick={() => confirm(`${t.summary}?`) && run(() => planPublish({ campaignId, targets: t.targets }), () => router.refresh())}
+          className="btn-primary"
+        >
+          {pending ? "Queuing…" : "Publish"}
+        </button>
         <ErrorText error={error} />
       </div>
-    </form>
+    </div>
+  );
+}
+
+export function RetryPublishButton({ jobId }: { jobId: string }) {
+  const { pending, error, run } = useAction();
+  const router = useRouter();
+  return (
+    <span>
+      <button disabled={pending} onClick={() => run(() => retryPublish(jobId), () => router.refresh())} className="font-semibold text-brand">Retry</button>
+      <ErrorText error={error} />
+    </span>
   );
 }
 

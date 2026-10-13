@@ -347,3 +347,252 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Queues:** shared `concurrencyLimit` per provider in `src/trigger/queues.ts` (`video`, `elevenlabs`, `vidiq`, `gemini-llm`, `ffmpeg-render`). The brief's `veo` is `video` because the video provider is Seedance.
 - **Build extensions:** `ffmpeg` only; Prisma extension is added in Phase 1 when tasks touch the DB.
 - **Not yet existing:** `runAgent`, `produceShots`, `runPostProduction`, `publishAll` are inline in `campaignPipeline.ts`/`agents/index.ts`; Phase 1 extracts them first.
+
+## Buffer connections (12 Oct 2026)
+
+### Product decisions
+- **Connections menu:** new top-level `/connections` (Buffer channels, other integrations read-only, "add account" guide). Boards integrations "Manage" and "+" point here. Schedule and publishing stay in the Content Creator "Schedule & publishing" tab and in Approval; metrics go to a new minimal Analytics page.
+- **Reuse, not a new model:** the prompt's `SocialChannel` is `SocialAccount` (already synced from Buffer, already linked to `BrandKit`). We add status, `enabledForPublishing`, `isDefaultForPlatform`, `lastSyncedAt` and `meta`. `PublishJob` is extended, not replaced.
+- **UI language is English** (existing UI, owner preference), not Indonesian as in the brief.
+- **Layout:** single Next app. `packages/providers/buffer` is `src/lib/providers/buffer/`, workflows stay in `src/lib/workflows/`, tests use `node:test` with an injected `fetch` (no Vitest/MSW).
+- **API key** only in env (`BUFFER_API_KEY`); the UI shows connected/failed status only.
+
+### Verified against developers.buffer.com
+- **Rate limits** (`/guides/api-limits.md`): per API key, 100 requests / 15 min on all plans; 250 / 24 h (Free, Essentials), 500 (Team); 3,000 / 30 d (Free), 7,500 (Essentials), 15,000 (Team). 429 carries `Retry-After` (seconds) and body `errors[].extensions.code = RATE_LIMIT_EXCEEDED`. Daily posting limits are per channel, via `dailyPostingLimits` (fields `isAtLimit`, `limit`, `scheduled`, `sent`); `saveToDraft` skips the check.
+- **Errors** (`/guides/error-handling.md`): GraphQL always answers HTTP 200 except 429. Auth failures are `errors[].extensions.code` `UNAUTHORIZED`/`FORBIDDEN`; `UNEXPECTED` is a retryable server error. Mutations return a union; `... on MutationError { message }` (e.g. `InvalidInputError`, `LimitReachedError`). The client therefore maps by extension code, not only HTTP status.
+- **Media fetch time** (`/guides/hosting-media.md`): Buffer fetches the asset **when the post publishes**, possibly days after `createPost`. URLs must be public, direct, HTTPS and **stable**; presigned/expiring URLs are warned against ("may fail silently"). Some failures (e.g. image dimensions) surface at `createPost`.
+  - Decision: for `customScheduled`, create the post close to `dueAt` (existing `step.sleepUntil(dueAt - 5 min)`) and presign for 6 h (covers the publish). For `addToQueue` the publish time is unknown, so presign for the S3 maximum (7 days) and note the limit in docs; `saveToDraft` and `shareNow` are unaffected beyond the draft being scheduled later by the owner in Buffer (known limitation, documented).
+- **Video format/size/duration for Reels/TikTok:** not in the Buffer docs read; not enforced by us beyond what the PRD already requires (9:16 mp4). Buffer returns an error on `createPost` or `Post.error` if rejected.
+- **Webhooks:** none documented (only a `realTime` sync mechanism mention). **Decision: poll** `post(input:{id})` with growing intervals.
+- **Post statuses** (`reference.md`): `draft`, `error`, `needs_approval`, `scheduled`, `sending`, `sent`. `Post.externalLink` is the permalink; `Post.error.message` the failure text; `sentAt`, `dueAt`.
+- **`createPost` input:** `channelId`, `mode` (ShareMode: `addToQueue`, `customScheduled`, `shareNext`, `shareNow`), `schedulingType` (`automatic`/`notification`), `text`, `assets` (`[{ video: { url } }]`), `dueAt` (UTC ISO, required for `customScheduled`), `metadata`, `saveToDraft: Boolean` (a flag, not a mode; skips posting limits), `needsApproval`, `aiAssisted: Boolean`, `tagIds`.
+- **Metadata:** `instagram { type: reel, shouldShareToFeed, firstComment }`; `tiktok { isAiGenerated, title }`. **AI label:** TikTok `isAiGenerated: true` and top-level `aiAssisted: true` on every post (PRD §6 compliance). Instagram has `isAiGenerated` only on the output type, so the input cannot set it; `aiAssisted` is our only signal there.
+- **Metrics** (`/guides/post-metrics.md`): `Post.metrics: [{ type, name, value, unit(count|percentage) }]` plus `metricsUpdatedAt`. Only types the network reports are present (missing is not zero); refreshed about daily, so T+1h is usually empty. Needs the `insightsRead` scope: **personal API key only**. Moving to OAuth app clients would break metrics. Normalised types seen: `reactions`, `reposts`, `comments`, `saves`, `follows`, `quotes`, `viewers`, `totalTimeWatched`, `likes`. We store exactly what comes back and never invent `impressions`/`plays`.
+- **Channel fields used:** `id`, `name`, `displayName`, `service`, `isDisconnected`, `isLocked`, `isQueuePaused`, `timezone`, `avatar`, `externalLink`; `channels(input:{organizationId, filter})`.
+
+### Field list we will use
+`createPost` (above, with `saveToDraft`, `aiAssisted`), `post(input:{id}) { id status dueAt sentAt externalLink error { message } metrics { type name value unit } metricsUpdatedAt }`, `account { organizations { id } }`, `channels`, `dailyPostingLimits` (not used v1).
+
+### Implementation notes (Buffer connections, built)
+- **Reused columns:** `PublishJob.postId` is the Buffer post id, `error` the last error, `scheduledAt` the due time; `SocialAccount.active` is "enabled for publishing". Added only `status`, `isDefaultForPlatform`, `lastSyncedAt`, `avatarUrl` (account) and `mode`, `attempt`, `lastPolledAt` (job), plus `MetricSnapshot`. The existing `PublishStatus` values are kept (`published` = Buffer `sent`); no `canceled` value: cancel stays `failed` + "Cancelled".
+- **Default off:** new Buffer channels start with `active = false`; previously they started active. Existing rows are untouched. "One default per platform" is enforced in code (transaction), not by a partial index (Prisma cannot model it).
+- **Campaign status:** the pipeline now creates jobs on approve (`PUBLISHING`, then `PUBLISHED`, or back to `APPROVED` if nothing was accepted; `PUBLISHING → APPROVED` added to the state machine). A draft-only result is not PUBLISHED. An explicit empty target list means "approved, do not publish".
+- **Sidebar indicator** shows for an enabled channel that Buffer reports disconnected/locked, or a failed Buffer health check. A channel that left Buffer is deactivated by the sync and shows its chip on `/connections` only.
+- **Timezone:** schedule times are entered in `Setting.timezone` (default stays Asia/Jakarta, not Asia/Bangkok) and converted with `zonedToIso`.
+- **Metrics clock:** T is the moment the poll sees the post as sent, not Buffer's `sentAt`.
+- **Not done:** a manual `saveToDraft` run through the full approve flow (needs the dev servers); covered by unit tests with an injected `fetch` only. Live checks made: read-only channels query.
+- **Stale line fixed:** Instagram Graph / TikTok inbox / Orshot publishers are still not built; Buffer is the only publisher.
+
+## Buffer Posts scheduler: text and thread posts for X and Threads (12 Oct 2026)
+
+### Product decisions (owner)
+- **Post source is a new Socmed Specialist direct task.** Nothing in the repo generated a batch of text posts: the
+  pipeline makes one video per campaign and a direct task makes exactly one artifact. The task takes goal, product,
+  audience, platforms and a count, and its single artifact holds N post drafts (`{text, thread[]}`). The schedule
+  panel hangs off its result page. The brief assumed a "generate briefs" page that did not exist.
+- **UI stays English** (fourth override of the brief's Indonesian, same ruling as every stage above).
+- **Timezone is `Setting.timezone`** (Asia/Jakarta), not the brief's Asia/Bangkok. Same UTC+7; the picker can be
+  set per plan anyway.
+- **Live spike approved** against the owner's real Buffer account, with cleanup afterwards.
+
+### Spike results, 12 Oct 2026 (live, against the owner's key; all test posts deleted afterwards)
+The brief listed three unverified facts. All three are now answered, plus four extras worth keeping.
+
+1. **A draft converts to scheduled with `editPost`. No delete-and-recreate fallback is needed.**
+   `editPost { id, text, saveToDraft: false, mode: "customScheduled", dueAt }` returned
+   `PostActionSuccess` with `status: "scheduled"` and the `dueAt` echoed back, and a following `post(id)` confirmed it.
+   **Caveat found the hard way: `editPost` replaces, it does not merge.** The same call without `text` failed with
+   `InvalidInputError: "Invalid post: Post must have either text or media."` So the conversion must resend `text`
+   (and, for a thread, `metadata`) alongside the schedule fields.
+2. **Max 25 posts per thread.** A 30-item thread was rejected with
+   `InvalidInputError: "Invalid post: Threads cannot have more than 25 items."`; 5 items succeeded. `MAX_THREAD = 25`.
+3. **`needsApproval` must not be sent.** It exists on `CreatePostInput`, but a `createPost` that omitted it
+   succeeded, and `Post` has no `needsApproval` field at all — approval state is just `status: needs_approval`,
+   which `jobStatus` already maps to failed. So we keep omitting it.
+4. **A draft can carry its schedule from the start:** `createPost { mode: "customScheduled", dueAt, saveToDraft: true }`
+   is accepted and returns `status: "draft"` with the `dueAt` stored. So step 1 writes the intended time and step 2
+   only flips `saveToDraft`.
+5. **`deletePost` uses a different union** from create/edit: `DeletePostPayload = DeletePostSuccess { id } | VoidMutationError { message }`,
+   not `PostActionSuccess`/`MutationError`. Input is `DeletePostInput { id }`. Noted for whenever a delete is needed;
+   the feature itself does not need one now that (1) holds.
+6. **The "top-level `text` must equal `thread[0].text`" rule is not enforced by the API** — a mismatched pair was
+   accepted. We still follow the documented rule, since the rendering side is what the docs describe.
+7. **`PostInputMetaData` really does key by service** (`twitter`, `threads`, `instagram`, `tiktok`, … ), confirming
+   the thread metadata shape.
+
+**Not verified live: the Threads channel.** The owner's Buffer has one X channel (`MIbraAP`) and one TikTok channel,
+no Threads channel, so `metadata.threads.thread` and the Threads thread cap are assumed to mirror X's.
+
+### Implementation notes (built)
+- **`PublishJob` extended, no new table.** `campaignId` became nullable and `agentTaskId` + `thread` were added
+  (migration `20261012250000_text_post_schedule`). A `ScheduledPost` table would have had to re-declare
+  status/mode/postId/permalink/error/scheduledAt/attempt/idemKey and then grow its own polling, its own
+  `MetricSnapshot` relation, its own cancel/retry actions and its own Analytics query. Extending cost three columns
+  and six null guards, and reuses `publish-job`, `bufferMetrics`, Analytics and the Agenda card unchanged.
+  Dropping NOT NULL rewrites no rows, and the new `idemKey` namespace is prefixed `task:`, so it cannot collide with
+  the existing `campaignId:accountId:attempt`.
+- **The per-post dimension is the idemKey, not a column:** `task:<taskId>:<slot>:<accountId>`, so many posts can
+  share one channel (the old key had no slot dimension and allowed only one post per campaign+account+attempt).
+- **No `SchedulePlan` table.** The brief asked for one with its own status; the rows already carry status, mode and
+  due time per post, so the plan's state is derived instead of stored and kept in sync.
+- **No `schedule/draft.push` event.** `publish/job` already claims the row atomically, creates the post and records
+  the id, and `mode: "draft"` makes it return before the poll loop.
+- **Step 1 = the existing `publish-job`; step 2 = new `schedule-apply`.** Idempotency: step 1 calls Buffer only when
+  the row's `postId` is null and writes the id in the same step; step 2 treats `mode` as the state machine
+  (`draft` = not converted) and `editPost` is harmless to repeat. Each post is its own run or step, so a mid-batch
+  failure leaves the others alone and a second press only retries what failed.
+- **Status by cron, not a poll loop.** `buffer-posts-sync` (every 15 min, 50 rows, `agentTaskId` not null) reads
+  status for text posts; the campaign video keeps its own poll loop untouched. A row moving to published sends
+  `buffer/post.sent` through a conditional update, so `bufferMetrics` is reused as-is and cannot double-fire.
+- **The generator is a direct task, `TASKS.socmedSpecialist`.** No `AGENT_ROLES` entry: `callLlm` falls back to the
+  generic system prompt for an unlisted role, and an entry would only add a persona and a Memory tab. Its output has
+  no `next`, so it never seeds a video campaign.
+- **The drafts are not persisted at generation time.** The artifact payload already holds them; rows appear when the
+  owner pushes, so there is nothing to clean up and the editable preview stays free client state.
+- **No `CostEntry` for Buffer.** The calls cost no dollars. Quota use is a structured log per task and step
+  (`{at:"buffer", step, taskId, posts, calls}`). The generator's LLM call is costed and capped as usual.
+- **No `deletePost` and no delete-and-recreate fallback:** the spike showed `editPost` converts a draft, so only the
+  branch that is actually used was built.
+- **No proactive RateLimit-header throttling.** The client's 429 + `Retry-After` handling plus the 50-row cron cap
+  are enough; revisit if a 429 ever appears.
+- **One text per post, validated against the strictest picked channel.** Per-platform variants wait until asked for.
+- **Character budget assumes X Free (280).** `CHAR_LIMIT` in `src/lib/publish.ts` is the single place to raise it to
+  25,000 on a paid plan.
+- **Verified:** 113 unit tests (slot building including the Bangkok and Jakarta rollovers and a DST boundary, the
+  character budget with emoji and URL weighting, `convertOnce` skip/failure/no-duplicate-on-retry, a text post
+  publishing with no presign while TikTok still requires a final cut, the thread and editPost inputs, `bufferSchedule`
+  error and no-retry). Against the local DB: `createScheduleJobs` twice returns the same rows and writes no
+  duplicates, a text post stores `campaignId: null` and its thread, and an over-limit post or a 26-part thread is
+  refused before anything is written (probe rows removed afterwards). The dev server compiles `/api/inngest` with 11
+  functions.
+- **Verified live, drafts only (12 Oct 2026).** The X channel `MIbraAP` was synced and enabled for publishing, then a
+  real Socmed Specialist task ran through Inngest (4 posts, schema-valid, US$0 on the free model) and its posts were
+  pushed to Buffer: 4 drafts created, each carrying the right `dueAt` (09:00/19:00 Asia/Jakarta on 1-2 Dec 2026 →
+  02:00Z/12:00Z), Buffer reporting `status: draft`. A second pass over the same rows skipped every one, so the
+  never-post-twice guard holds against the live API. **Step 2 (Schedule) was deliberately not pressed** (owner's
+  call), so nothing can publish; those 4 drafts are still in Buffer for the owner to review or delete.
+- **Gotcha found while testing: a running `next dev` keeps the old Prisma client.** `prisma generate` could not
+  replace `query_engine-windows.dll.node` while the dev server held it, so the server kept rejecting
+  `campaignId: null` ("expected non-nullable type String") and every `publish/job` run failed, while scripts using
+  the freshly generated client on disk worked. After a schema change the dev server has to be stopped, `prisma
+  generate` re-run and the server restarted.
+
+
+### Writing voice for text posts (12 Oct 2026, owner)
+- **Tone:** the post prompt now asks for relaxed, spoken language in the audience's own register (everyday Indonesian,
+  no stiff openers like "Apakah kamu..." or "Tahukah kamu..."), instead of ad-copy phrasing.
+- **Voice from the owner's own tweets, by pasting.** Reading a whole X timeline needs a paid X API read tier, and Buffer
+  only returns posts sent through Buffer, so the owner pastes up to 100 tweets (cap 40,000 characters). One LLM call
+  (`analyzeVoice`, role `voiceAnalyst`, costed like every other call) writes a short style guide: language and
+  pronouns, sentence rhythm, openers, emoji and punctuation habits, humour, verbatim recurring words, what they never
+  do. The tweets are marked as data to describe, never instructions.
+- **Stored once, editable:** `Setting.writingVoice` (nullable text, migration `20261012260000_writing_voice`). The owner
+  can edit or remove it on `/brief?mode=text`, and every batch (that form and the Quick task) uses it when set, where it
+  overrides the generic tone rules. Re-pasting replaces it. No per-account voices yet: it is one voice per workspace.
+- **Verified live** with the free model on 12 invented tweets: the guide named the right slang (gue/lo, sih, wkwk), and
+  the same topic read stiff without the voice and in that voice with it.
+- **Known limit, not fixed:** the free model still invents specifics (street names, "a small cafe next to the market")
+  despite the prompt telling it not to. Real venues must come from the topic or goal details.
+
+## Content types for text posts (13 Oct 2026)
+
+### Audit and mapping
+- **Builds on the existing text-post generator** (`TASKS.socmedSpecialist` → `/brief?mode=text` and the Quick task → artifact
+  `SocialPosts` → schedule panel → Buffer). The brief assumed a different project: `decisions.md`, a CLI (`topic add`),
+  `config/*.yaml`, `topic_bank`/`personal_stories` tables and embeddings. None of them existed.
+- **Owner answers:** YAML via the `yaml` package (new dependency, zero deps of its own); topic bank and stories are added
+  on `/brief?mode=text` (web UI, **no CLI**); **each post slot gets its own type**; `needs_review` posts are **blocked
+  from Buffer until ticked "Reviewed"**.
+- **Language follows the topic** (owner): the post is written in the language of the brief topic, not forced Indonesian.
+  The topic language is detected in code (small id/en function-word list) and named in the prompt; other languages fall
+  back to "same language as the topic". Few-shot examples are marked as structure and tone only. UI stays English.
+- Field names are camelCase (`sourceNote`, `needsSource`) like every other schema, not the brief's snake_case.
+
+### Built
+- **Config** (`config/`, loaded and Zod-validated by `src/lib/content/config.ts`; an error names the file and the field):
+  - `content-types.yaml`: variants (3), maxConsecutive (2), weeklyThreadCap (2), similarity (threshold 0.5,
+    lookbackDays 30, action reject), seedThemes, realPersonAllowlist, and per type: weight, material, source rule, format
+    rules and the prompt guide. The prompt and the validator read the same entries, so rules are not duplicated.
+  - `few_shot_examples.yaml`: 3-5 original examples per type; a test checks every example against its own type's rules.
+    Factual examples cite checkable public sources (BPS SP2020, APJII 2024, KBBI, UNESCO, Britannica, Smithsonian).
+  - `banned.yaml`: `reject` and `review` phrase lists, whole-word and case-insensitive.
+  - Read once per process: restart the server/worker after editing the YAML.
+- **All ten types are present**; `humor_dakwah_atau_nilai` ships with weight 0 (off).
+- **`ContentSource`** (`kind topic|story`, sourceNote, sourceYear, usedCount, archivedAt), migration
+  `20261013000000_content_sources`. Archive keeps the row. The brief topic is the "manual trend"; there are no automatic
+  trends.
+- **Pipeline** (`src/lib/content/`): `pickType` (weighted, never more than maxConsecutive in a row, thread cap over a
+  **rolling 7 days** counted from generated batches + this batch, skips types without material) → `materialFor` (bank
+  items must share a word with the topic, least used first, not reused in a batch; storytelling only from stories; data
+  only from a topic with source + year; educational falls back to the brief topic and then needs review) → one LLM call
+  per post (`writeContentVariants`, idemKey `<task>:p<slot>`, exactly 3 variants) → `validateVariant` → the best usable
+  variant is the post and the others are swappable alternatives.
+- **Per-post failure isolation:** a bad model reply or LLM error skips that post (`skipped[]`, shown on the panel). The
+  task fails only when no post survives; an `AiBudgetError` or a DB load error fails it at once with a clear message.
+- **Validation:** length per picked platform (`textProblem`), type format (sentences, thread marker/count/numbering,
+  hashtags, question, 2-4 poll options), language vs topic (mismatch → review), banned words, Jaccard similarity vs
+  `PublishJob` texts of the last 30 days and earlier posts in the batch (**no embedding service**), source rules
+  (`needsSource: false` is never proof: educational is approved only when the material carries a source), and possible
+  real people (capitalised name runs / @handles not in topic, material or allowlist → review; heuristic).
+- **Sentence counting:** a 1-2 word fragment ("Arus balik.") is a setup, not a sentence. The brief's own random_receh
+  seed has one, and the brief also demands "one sentence".
+- **Review gate:** `pushDrafts` reloads the artifact and refuses rejected variants, unreviewed `needs_review` ones and
+  edited text containing a `reject` phrase, whatever the client sends. Storytelling is always reviewed (nothing may be
+  added beyond the story). Batches made before this change have no status and pass as before.
+- **The generic `SYSTEM_ID` ("All output in English") is bypassed** for posts: `writeContentVariants` calls
+  `generateStructured` with its own system line, since a post follows the topic language.
+- **Estimate** = one call per post (count × single-call estimate).
+
+### Not built
+- **Per-type posting hours:** the schedule panel lays posts in order; add when asked.
+- **Native polls:** Buffer's input has no poll field, so options are written as lines.
+- **CLI `topic add`:** replaced by the web form (owner).
+
+### Verified
+- 138 unit tests (21 new: weights over 20k picks, anti-repeat, thread cap, material per type, storytelling only from
+  stories, exactly 3 variants, invalid/short replies, LLM/DB/budget failures, length and format per type, banned,
+  similarity, sources, real people, language, review gate, YAML errors, every few-shot example).
+- **Live, free model, real DB** (probe rows removed afterwards): an English topic gave English posts and an Indonesian
+  topic gave Indonesian posts, all schema-valid; the educational post cited the topic-bank source.
+- Two fixes came from that run:
+  - The model wrote `?nA.` for a line break before poll options; it is now restored (as in `analyzeVoiceAction`).
+  - An Indonesian seed theme leaked into an English post; the prompt now says to translate the angle.
+- **Not verified in the browser:** the panel's variant switch and the Reviewed tick. The running dev server still holds
+  the old Prisma client (`prisma generate` could not replace the engine DLL), so it has to be restarted first.
+
+### Brief form follow-up (13 Oct 2026, owner)
+- **Content types are picked in the brief**, as cards in the same multi-pick style as Goals and Audience (icon, label,
+  one-line blurb, what the type needs). Labels, icons and blurbs live in `content-types.yaml` next to the rules. No pick
+  = the weighted mix. Picks limit the mix with weights kept (`onlyTypes`); a **single pick lifts the anti-repeat rule**
+  (an explicit request for that type), and two or more picks keep it. Weight-0 types are not offered.
+- **A type with no material cannot be picked:** Story needs a story, Data & stats needs a fact with a source and a
+  year; the badge links to the material panel. Educational stays pickable and says it is reviewed until a fact has a
+  source. The Quick task gets the same field as checkboxes (enum array).
+- **"Your material" is a sidebar beside the text brief:** a Fact / My story toggle, one text, and for a fact an optional
+  source. The title is the opening words and the year is read from the source. Items show as compact cards with a
+  remove (archive) button.
+
+### Sources by the AI, context files, no stored facts or stories (13 Oct 2026, owner)
+- **Reverses two points above:** the topic bank (facts) and personal stories are **removed** (`ContentSource` dropped,
+  migration `20261013010000_content_files`). Stories were not "personality", and educational / data / story posts no longer
+  draw on stored items.
+- **Educational and Data & stats: the AI names its own source and confidence on every post** (`sourceNote`: real
+  publisher or institution, title, year; `confidence`: high | medium | low). A label, not a percentage: a model's own number
+  would look more exact than it is. The post is **always `needs_review`** (never approved on the AI's word), a low or
+  missing confidence adds a reason, and a statistic still needs a number, a source and a year or it is rejected. The source
+  and confidence show on the schedule panel and are saved on the draft (`PublishJob.sourceNote`, `sourceConfidence`, taken
+  from the stored post, not from the client), so the Publishing card still shows them for review. **We do not verify the
+  source**: the UI says so. In the live run the free model's sources looked plausible, but the figures are unchecked.
+- **Story posts** no longer need a stored story: they are written from the topic and the uploaded context, as a
+  relatable scenario or third person unless the context holds a real event, never as an invented personal experience.
+  Always reviewed.
+- **Context files (/brief?mode=text sidebar, `ContentFile`):** notes (.md .txt .csv .json .yaml .html…) are stored as
+  text (20k chars max); pictures (.png .jpg .webp .gif, 5 MB) are **described once by a vision model** at upload (role
+  `contextReader`, costed like every call; model from env `AI_VISION_MODEL`, default `google/gemma-4-31b-it:free`) and
+  only the description is kept, not the image. Every batch reads the newest files as background (data, not instructions)
+  within 8,000 characters (3,000 per file). PDF and Word are not read. Up to 40 files; good files are saved even when
+  another fails, and the failures are listed.
+- **Type picker:** the "needs a story / a sourced fact" badges and locks are gone; types that state facts say the AI's
+  source and confidence will be shown for checking.
+- **Verified:** 141 tests; live with free models: a generated picture was described (first vision model returned 429 on
+  both keys, the second worked), an English topic gave English posts with sources, an Indonesian one Indonesian.

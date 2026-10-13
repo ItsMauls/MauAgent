@@ -17,6 +17,7 @@ type Filter = keyof typeof FILTERS;
 
 const PLATFORM = {
   threads: { label: "Threads", configured: false, env: "Buffer" },
+  twitter: { label: "X", configured: false, env: "Buffer" },
   instagram: { label: "Instagram", configured: instagram.configured(), env: "IG_APP_ID and IG_APP_SECRET" },
   tiktok: { label: "TikTok", configured: tiktok.configured(), env: "TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET" },
 };

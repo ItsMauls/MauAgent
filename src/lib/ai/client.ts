@@ -1,9 +1,12 @@
 // The only place an OpenRouter (OpenAI-compatible) request is built. Plain fetch: no SDK needed for one endpoint,
 // and it gives direct access to `reasoning`, `usage.cost` and the HTTP status that drives failover.
 
+/** A user message with pictures is a list of parts (OpenAI-compatible); plain text stays a string. */
+export type ChatPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+
 export type ChatBody = {
   model: string;
-  messages: { role: "system" | "user" | "assistant"; content: string }[];
+  messages: { role: "system" | "user" | "assistant"; content: string | ChatPart[] }[];
   max_tokens: number;
   temperature?: number;
   reasoning?: Record<string, unknown>;

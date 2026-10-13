@@ -22,7 +22,9 @@ export function SyncButton({ action, syncing }: { action: () => Promise<unknown>
       <button
         type="button"
         disabled={pending || syncing}
-        className="btn-primary"
+        className="btn-primary px-3!"
+        title="Sync now"
+        aria-label="Sync now"
         onClick={() =>
           start(async () => {
             setError(null);
@@ -36,7 +38,6 @@ export function SyncButton({ action, syncing }: { action: () => Promise<unknown>
         }
       >
         <span className={`material-symbols-outlined ${pending || syncing ? "animate-spin" : ""}`}>sync</span>
-        {pending || syncing ? "Syncing…" : "Sync now"}
       </button>
       {error && <span className="mt-1 text-xs text-bad">{error}</span>}
     </span>

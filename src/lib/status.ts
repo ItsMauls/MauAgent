@@ -12,7 +12,8 @@ export const TRANSITIONS: Record<CampaignStatus, CampaignStatus[]> = {
   REVISING: ["AWAITING_BUDGET", "AWAITING_VIDEO_UPLOAD", "POST_PRODUCTION"],
   REGENERATING: ["AWAITING_VIDEO_UPLOAD", "POST_PRODUCTION"],
   APPROVED: ["PUBLISHING"],
-  PUBLISHING: ["PUBLISHED"],
+  // Back to APPROVED when every target failed, so the owner can pick targets again.
+  PUBLISHING: ["PUBLISHED", "APPROVED"],
   PUBLISHED: [],
   REJECTED: [],
   EXPIRED: [],

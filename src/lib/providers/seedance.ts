@@ -22,8 +22,9 @@ async function ark(path: string, init?: RequestInit) {
 }
 
 /** Create a generation task and return its task id. Called in its own step.run so a retry does not create a new task. */
-export async function createSeedanceTask(prompt: string, shot: Shot, tier: Tier): Promise<string> {
-  const { model, resolution } = seedanceConfig(tier);
+export async function createSeedanceTask(prompt: string, shot: Shot, tier: Tier, modelOverride?: string): Promise<string> {
+  const { model: envModel, resolution } = seedanceConfig(tier);
+  const model = modelOverride || envModel;
   if (!model) throw new Error(`SEEDANCE_MODEL_${tier.toUpperCase()} is not set`);
   const body = {
     model,

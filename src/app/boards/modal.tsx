@@ -14,15 +14,15 @@ export function Modal({ trigger, className, label, title, onToggle, children }: 
         aria-label={title}
         onClose={() => onToggle?.(false)}
         onClick={(e) => e.target === ref.current && ref.current.close()}
-        className="m-auto max-h-[85vh] w-[min(92vw,44rem)] overflow-y-auto rounded-3xl border border-line bg-white p-0 text-ink shadow-float backdrop:bg-ink/40"
+        className="m-auto max-h-[85vh] w-[min(92vw,44rem)] overflow-hidden rounded-3xl border border-line bg-white p-0 text-ink shadow-float backdrop:bg-ink/40 open:flex open:flex-col"
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-white px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-white px-6 py-4">
           <h2 className="truncate text-lg font-bold">{title}</h2>
           <button type="button" aria-label="Close" onClick={() => ref.current?.close()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-canvas hover:bg-brand-soft">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div className="space-y-4 p-6">{children}</div>
+        <div className="quiet-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-6">{children}</div>
       </dialog>
     </>
   );
@@ -42,15 +42,15 @@ export function RouteDialog({ title, closeHref, children }: { title: string; clo
       aria-label={title}
       onClose={() => router.replace(closeHref, { scroll: false })}
       onClick={(e) => e.target === ref.current && ref.current.close()}
-      className="m-auto max-h-[80vh] w-[min(94vw,64rem)] overflow-y-auto rounded-3xl border border-line bg-canvas p-0 text-ink shadow-float backdrop:bg-ink/40"
+      className="m-auto h-[88vh] w-[min(94vw,64rem)] overflow-hidden rounded-3xl border border-line bg-canvas p-0 text-ink shadow-float backdrop:bg-ink/40 open:flex open:flex-col"
     >
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-white px-6 py-4">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-white px-6 py-4">
         <h2 className="truncate text-lg font-bold">{title}</h2>
         <button type="button" aria-label="Close" onClick={() => ref.current?.close()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-canvas hover:bg-brand-soft">
           <span className="material-symbols-outlined">close</span>
         </button>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col p-6">{children}</div>
     </dialog>
   );
 }

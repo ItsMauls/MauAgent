@@ -49,6 +49,7 @@ export default async function WorkflowPage({ searchParams }: { searchParams: Pro
         runs: { orderBy: { startedAt: "desc" }, take: 1, include: { steps: true } },
         artifacts: { select: { agentRole: true } },
         shots: { select: { status: true } },
+        publishJobs: { orderBy: { createdAt: "desc" }, select: { id: true, platform: true, status: true, error: true, socialAccount: { select: { handle: true } } } },
       },
     }),
     db.campaign.count({ where: { status: "FAILED" } }),
@@ -116,6 +117,15 @@ export default async function WorkflowPage({ searchParams }: { searchParams: Pro
             </summary>
             <div className="border-t border-line px-6 pb-6 pt-4">
               <Link href={`/campaigns/${c.id}`} className="text-sm font-semibold text-brand hover:underline">Open campaign →</Link>
+              {c.publishJobs.length > 0 && (
+                <ul aria-label="Publishing" className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                  {c.publishJobs.map((j) => (
+                    <li key={j.id} title={j.error ?? undefined} className={`pill ${j.status === "failed" ? "border-red-300 bg-bad-soft text-red-800" : j.status === "published" ? "border-emerald-200 bg-ok-soft text-emerald-800" : "border-line bg-white text-ink-2"}`}>
+                      {j.platform} @{j.socialAccount.handle}: {j.status}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <ol aria-label={`${product} agent chain`} className="mt-4 ml-4">
                 {views.map(({ lane, v }, li) => {
                   const [label, cls, icon, dot] = STATE_STYLE[v.state];

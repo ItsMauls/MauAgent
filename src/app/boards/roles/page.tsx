@@ -39,10 +39,10 @@ function mainChain() {
 }
 
 /** Animated connector: `dir` is the direction the stream flows (the dashes move that way). */
-function Stream({ dir }: { dir: "right" | "left" | "down" }) {
+function Stream({ dir, grow }: { dir: "right" | "left" | "down"; grow?: boolean }) {
   const icon = { right: "chevron_right", left: "chevron_left", down: "keyboard_arrow_down" }[dir];
   return (
-    <span aria-hidden className={`flex items-center text-slate-400 ${dir === "down" ? "h-10 flex-col" : "h-36 flex-row"} ${dir === "left" ? "flex-row-reverse" : ""}`}>
+    <span aria-hidden className={`flex items-center text-slate-400 ${dir === "down" ? `flex-col ${grow ? "min-h-10 flex-1" : "h-10"}` : "h-36 flex-row"} ${dir === "left" ? "flex-row-reverse" : ""}`}>
       <span className={`flow flow-${dir} ${dir === "down" ? "w-0.5 flex-1" : "h-0.5 flex-1"}`} />
       <span className="material-symbols-outlined !text-[22px] leading-none">{icon}</span>
     </span>
@@ -78,9 +78,11 @@ function Rows({ info }: { info: Info }) {
           <div key={r}>
             <div className={COLS}>
               {row.map((role, j) => (
-                <div key={role.slug} style={{ gridColumn: col(j), gridRow: 1 }} className="flex min-w-0 flex-col items-center">
+                <div key={role.slug} style={{ gridColumn: col(j), gridRow: 1 }} className={`flex min-w-0 flex-col items-center ${j === row.length - 1 && r < rows.length - 1 ? "self-stretch" : ""}`}>
                   <Card role={role} info={info} />
                   <Branches role={role} info={info} />
+                  {/* Arrow to the next row starts right under this card and stretches to the row's bottom. */}
+                  {j === row.length - 1 && r < rows.length - 1 && <Stream dir="down" grow />}
                 </div>
               ))}
               {row.slice(1).map((role, j) => (
@@ -89,11 +91,6 @@ function Rows({ info }: { info: Info }) {
                 </div>
               ))}
             </div>
-            {r < rows.length - 1 && (
-              <div className={`${COLS} !items-center`}>
-                <div style={{ gridColumn: rtl ? 1 : 7 }} className="flex justify-center"><Stream dir="down" /></div>
-              </div>
-            )}
           </div>
         );
       })}

@@ -107,7 +107,10 @@ test("task inputs are validated and the form schema exposes artifact pickers", (
 });
 
 test("every role workspace with a task maps to the table's output; QC and post-production pick a campaign", () => {
-  assert.deepEqual(Object.keys(TASKS).sort(), ["accountManager", "accountTeam", "artDirector", "creativeDirector", "postProduction", "producer", "storyboardArtist", "videographer"]);
+  assert.deepEqual(Object.keys(TASKS).sort(), ["accountManager", "accountTeam", "artDirector", "creativeDirector", "postProduction", "producer", "socmedSpecialist", "storyboardArtist", "videographer"]);
+  // The Socmed Specialist writes text posts, so its output never seeds a video campaign.
+  assert.equal(TASKS.socmedSpecialist.next, undefined);
+  assert.equal(TASKS.socmedSpecialist.llm, true);
   for (const r of ["accountTeam", "postProduction"]) {
     const js = z.toJSONSchema(TASKS[r].input, { io: "input" }) as { properties: Record<string, { ref?: string }> };
     assert.equal(js.properties.campaignId.ref, "campaign");

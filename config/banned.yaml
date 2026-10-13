@@ -1,0 +1,25 @@
+# Banned words and phrases for generated text posts. Case-insensitive, matched as whole words or phrases.
+# reject: the variant is rejected. review: the variant needs a human look before it can be scheduled.
+
+reject:
+  - anjing
+  - bangsat
+  - kontol
+  - goblok
+  - tolol
+  - kafir
+  - pasti untung
+  - dijamin sembuh
+  - 100% aman
+  - klik link di bio sekarang juga
+
+review:
+  - tahukah kamu
+  - di era digital ini
+  - berikut adalah
+  - game changer
+  - revolusioner
+  - politik
+  - pemilu
+  - agama
+  - sara

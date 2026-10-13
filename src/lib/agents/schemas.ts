@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PublishTarget } from "@/lib/publish";
 
 export const VideoSource = z.enum(["seedance_api", "manual_upload"]);
 export const Platform = z.enum(["instagram", "tiktok"]);
@@ -95,7 +96,7 @@ export type Stage = z.infer<typeof Stage>;
 export const RevisionTarget = z.enum(["creativeDirector", "artDirector", "postProduction"]);
 
 export const DecisionInput = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("approve") }),
+  z.object({ type: z.literal("approve"), publishTargets: z.array(PublishTarget).max(10).optional() }),
   z.object({ type: z.literal("reject"), notes: z.string().max(2000).default("") }),
   z.object({ type: z.literal("revise"), notes: z.string().trim().min(1).max(2000), targetAgent: RevisionTarget.optional() }),
   z.object({ type: z.literal("regenerate"), shotIds: z.array(z.string().min(1)).min(1), confirmOverCap: z.boolean().default(false) }),
@@ -108,6 +109,71 @@ export const BudgetDecisionInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("cancel") }),
 ]);
 export type BudgetDecisionInput = z.input<typeof BudgetDecisionInput>;
+
+/** Text platforms Buffer can post to as text or a thread. Separate from Platform, which is video-only. */
+export const TextPlatform = z.enum(["twitter", "threads"]);
+export type TextPlatform = z.infer<typeof TextPlatform>;
+
+/**
+ * Socmed Specialist output: a batch of ready-to-schedule posts. `thread` holds the parts after `text`, so an empty
+ * array is a single post. Buffer rejects a thread longer than 25 items in total (MAX_THREAD).
+ */
+const postText = z.string().trim().min(1).max(2000).describe("the post itself, or part 1 of a thread");
+const postThread = z.array(z.string().trim().min(1).max(2000)).max(24).default([]).describe("further thread parts, empty for a single post");
+export const ReviewStatus = z.enum(["approved", "needs_review", "rejected"]);
+export const Confidence = z.enum(["high", "medium", "low"]);
+
+/** One validated variant kept next to a post, so the owner can swap it in. */
+const AltVariant = z.object({ text: postText, thread: postThread, sourceNote: z.string().nullish(), confidence: Confidence.nullish(), status: ReviewStatus, reasons: z.array(z.string()).default([]) });
+
+/**
+ * Text-post batch artifact. Batches made before content types only have text + thread; the other fields are set by
+ * the content pipeline (src/lib/content): type, validation status and reasons, the AI's source and confidence, the alternatives,
+ * and the slots that produced nothing usable.
+ */
+export const SocialPosts = z.object({
+  posts: z
+    .array(
+      z.object({
+        text: postText,
+        thread: postThread,
+        type: z.string().optional(),
+        status: ReviewStatus.optional(),
+        reasons: z.array(z.string()).default([]),
+        sourceNote: z.string().nullish(),
+        confidence: Confidence.nullish(),
+        alternatives: z.array(AltVariant).default([]),
+      }),
+    )
+    .min(1)
+    .max(20),
+  skipped: z.array(z.object({ type: z.string(), reason: z.string() })).default([]),
+});
+export type SocialPosts = z.infer<typeof SocialPosts>;
+
+/** The model's answer for one post: exactly `n` variants of the picked content type. */
+export const contentVariants = (n: number) =>
+  z.object({
+    type: z.string(),
+    variants: z
+      .array(
+        z.object({
+          text: postText,
+          thread: postThread,
+          sourceNote: z.string().nullable().describe("for a factual claim: the real publisher or institution, title and year of the source; null when the post states no fact"),
+          confidence: Confidence.nullable().describe("for a factual claim: how sure you are that the fact and its source are real and correct (high, medium or low); null when the post states no fact"),
+          needsSource: z.boolean().describe("true when a claim still has no source you can name"),
+        }),
+      )
+      .length(n),
+  });
+export type ContentVariants = z.infer<ReturnType<typeof contentVariants>>;
+
+/** A style guide distilled from the owner's own tweets. Plain text, so the owner can edit it before it is used. */
+export const VoiceProfile = z.object({
+  voice: z.string().trim().min(1).max(1800).describe("the style guide, a short bulleted list in plain text"),
+});
+export type VoiceProfile = z.infer<typeof VoiceProfile>;
 
 /** Agent roles that have a persona (Producer/Videographer/Post-production only speak in deliberations). */
 export const AGENT_ROLES = [

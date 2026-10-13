@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { createCampaign, getSettings } from "../actions";
+import { AUDIENCES, Chips, Field, TextBrief } from "./text-brief";
+import { ContentContext } from "./sources";
 import { getPersona } from "@/lib/agents/persona";
 import { AGENT_ROLES, type AgentRole } from "@/lib/agents/schemas";
 
@@ -15,18 +17,6 @@ const GOALS = [
   "Store visits / foot traffic",
   "Grow followers & engagement",
   "Collect leads / reservations",
-];
-
-const AUDIENCES = [
-  "Gen Z (18–24)",
-  "Millennials (25–40)",
-  "Students",
-  "Office workers",
-  "Young parents / families",
-  "Urban professionals",
-  "Foodies & café hunters",
-  "Deal / promo seekers",
-  "Local neighborhood",
 ];
 
 const KPIS = [
@@ -66,7 +56,8 @@ const TIPS = [
   "Keep it to max 3 key messages for a 20–30s video",
 ];
 
-export default async function BriefPage() {
+export default async function BriefPage({ searchParams }: { searchParams: Promise<{ mode?: string }> }) {
+  const text = (await searchParams).mode === "text";
   const [s, personas, kit] = await Promise.all([
     getSettings(),
     Promise.all(AGENT_ROLES.map(getPersona)),
@@ -84,10 +75,34 @@ export default async function BriefPage() {
         Create a new <span className="relative z-0 text-brand">campaign brief<span className="absolute inset-x-0 -bottom-1 -z-10 h-2 rounded-full bg-amber-soft" /></span>
       </h1>
       <p className="mt-2 max-w-3xl text-ink-2">
-        Fill in the brief below. Seven AI agents will turn it into concepts, a shot list and a vertical 9:16 video, then hand it to you for approval.
+        {text
+          ? "The Socmed Specialist writes a batch of text posts for X and Threads. You then pick the days and times, send them to Buffer as drafts, and schedule them."
+          : "Fill in the brief below. Seven AI agents will turn it into concepts, a shot list and a vertical 9:16 video, then hand it to you for approval."}
       </p>
 
+      <nav aria-label="Brief type" className="mt-5 flex flex-wrap gap-2">
+        {[
+          { href: "/brief", on: !text, t: "Video campaign", icon: "movie" },
+          { href: "/brief?mode=text", on: text, t: "Text posts (X, Threads)", icon: "article" },
+        ].map((m) => (
+          <Link
+            key={m.href}
+            href={m.href}
+            aria-current={m.on ? "page" : undefined}
+            className={`pill px-4 py-2.5 text-sm font-semibold ${m.on ? "border-brand bg-brand text-white" : "border-line bg-white text-ink-2 hover:border-brand/40"}`}
+          >
+            <span className="material-symbols-outlined !text-[18px]">{m.icon}</span>{m.t}
+          </Link>
+        ))}
+      </nav>
+
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-12">
+        {text ? (
+          <>
+            <div className="lg:col-span-8"><TextBrief /></div>
+            <aside className="lg:sticky lg:top-20 lg:col-span-4"><ContentContext writingVoice={s.writingVoice} /></aside>
+          </>
+        ) : (
         <form action={createCampaign} className="card space-y-10 p-6 sm:p-8 lg:col-span-8">
           <Section n="01" tone="bg-brand-soft text-brand" title="Campaign basics" sub="Read first by the Account Manager to frame everything else." required>
             <Field label="Product / business" hint="Brand & offer">
@@ -204,8 +219,9 @@ export default async function BriefPage() {
             </button>
           </div>
         </form>
+        )}
 
-        <aside className="space-y-4 lg:sticky lg:top-20 lg:col-span-4">
+        {!text && <aside className="space-y-4 lg:sticky lg:top-20 lg:col-span-4">
           <div className="rounded-3xl bg-amber-soft/70 p-6">
             <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-900">
               <span className="material-symbols-outlined text-amber-700">tips_and_updates</span>Effective prompt tips
@@ -265,7 +281,7 @@ export default async function BriefPage() {
               </li>
             </ol>
           </div>
-        </aside>
+        </aside>}
       </div>
     </div>
   );
@@ -286,38 +302,6 @@ function Section({ n, tone, title, sub, required, children }: { n: string; tone:
       </div>
       {children}
     </section>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="label mb-0">{label}</span>
-        {hint && <span className="text-[11px] text-ink-3">{hint}</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function Chips({ label, hint, name, options }: { label: string; hint: string; name: string; options: string[] }) {
-  return (
-    <fieldset>
-      <legend className="mb-1.5 flex w-full items-center justify-between gap-2">
-        <span className="label mb-0">{label}</span>
-        <span className="text-[11px] text-ink-3">{hint}</span>
-      </legend>
-      <div className="flex flex-wrap gap-2">
-        {options.map((o) => (
-          <label key={o} className="group pill cursor-pointer border-line bg-white px-3.5 py-2 text-ink-2 hover:border-brand/40 has-checked:border-brand has-checked:bg-brand-soft has-checked:text-brand has-focus-visible:ring-2 has-focus-visible:ring-brand/40">
-            <input type="checkbox" name={name} value={o} className="sr-only" />
-            <span className="material-symbols-outlined hidden !text-[14px] group-has-checked:inline">check</span>
-            {o}
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }
 
