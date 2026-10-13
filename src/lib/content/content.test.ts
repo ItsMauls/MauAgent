@@ -86,7 +86,6 @@ test("the weekly thread cap stops thread types", () => {
 
 test("only the light types get a seed theme, and themes are not repeated inside a batch", () => {
   assert.equal(angleFor(cfg, "educational", new Set()), null);
-  assert.equal(angleFor(cfg, "data_stat", new Set()), null);
   const used = new Set<string>();
   for (let i = 0; i < cfg.seedThemes.length; i++) used.add(angleFor(cfg, "random_receh", used, seeded(i + 1))!);
   assert.equal(used.size, cfg.seedThemes.length, "every theme once before any repeats");
@@ -151,7 +150,7 @@ test("posts too similar to recent ones are caught", () => {
   assert.equal(validateVariant(v("Kopi sachet di pantry kantor itu tanda cinta yang paling jujur."), ctx({ corpus: [old] })).status, "approved");
 });
 
-test("educational and statistic posts carry the AI's source + confidence and always wait for the owner", () => {
+test("educational posts carry the AI's source + confidence and always wait for the owner", () => {
   const edu = (over: Partial<Variant>) => validateVariant(v("Kopi susu gula aren mulai populer di Jakarta.", over), ctx({ type: "educational" }));
   const named = edu({ sourceNote: "Survei kopi 2023", confidence: "high" });
   assert.equal(named.status, "needs_review", "never approved on the AI's word alone");
@@ -159,12 +158,6 @@ test("educational and statistic posts carry the AI's source + confidence and alw
   assert.match(edu({ sourceNote: null }).reasons.join(), /No source named/);
   assert.match(edu({ sourceNote: "x", confidence: "low" }).reasons.join(), /not sure/);
   assert.match(edu({ sourceNote: "x", confidence: "high", needsSource: true }).reasons.join(), /still unsourced/);
-
-  const stat = (text: string, over: Partial<Variant>) => validateVariant(v(text, over), ctx({ type: "data_stat" }));
-  assert.equal(stat("Penjualan kopi susu naik 30% di 2023.", { sourceNote: "Survei kopi 2023", confidence: "medium" }).status, "needs_review");
-  assert.equal(stat("Penjualan kopi susu naik 30%.", { sourceNote: null }).status, "rejected", "no source");
-  assert.match(stat("Penjualan kopi susu naik 30%.", { sourceNote: "Survei kopi", confidence: "high" }).reasons.join(), /year/);
-  assert.match(stat("Penjualan kopi susu naik banyak sekali.", { sourceNote: "Survei kopi 2023", confidence: "high" }).reasons.join(), /needs the number/);
 });
 
 test("story posts are always reviewed and never claim to be a real experience", () => {
