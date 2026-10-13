@@ -40,13 +40,8 @@ export function ContentTypes({ weeklyThreadCap }: { weeklyThreadCap?: number }) 
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-ink">{c.label}</span>
                 <span className="block text-xs leading-snug text-ink-2">{c.blurb}</span>
-                {note && (
-                  <span className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${"warn" in note && note.warn ? "bg-amber-soft text-amber-800" : "bg-canvas text-ink-2"}`}>
-                    <span className="material-symbols-outlined !text-[12px]">{note.icon}</span>{note.text}
-                  </span>
-                )}
               </span>
-              <span className="material-symbols-outlined !text-[20px] text-ink-3/40 group-has-checked:hidden">radio_button_unchecked</span>
+              {note && <span title={note.text} className="material-symbols-outlined !text-[20px] text-ink-3 group-has-checked:hidden">help</span>}
               <span className="material-symbols-outlined hidden !text-[20px] text-brand group-has-checked:inline">check_circle</span>
             </label>
           );

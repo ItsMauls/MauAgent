@@ -9,11 +9,14 @@ educational:
   - text: Yang benar "mengubah", bukan "merubah". Kata dasarnya "ubah", sedangkan "rubah" itu hewan. Jadi kalau kamu merubah sesuatu, secara teknis kamu lagi berubah jadi rubah.
     sourceNote: KBBI daring, lema "ubah" dan "rubah"
     confidence: high
-  - text: Secara botani, pisang termasuk buah beri, sedangkan stroberi justru bukan. Ilmu tumbuhan memang suka bikin kita ragu sama isi kulkas sendiri.
-    sourceNote: Encyclopaedia Britannica, "Is a Banana a Berry?"
-    confidence: high
   - text: Borobudur dibangun sekitar abad ke-8 sampai ke-9 di masa Wangsa Syailendra. Umurnya lebih tua dari Angkor Wat, dan sejak 1991 masuk daftar Warisan Dunia UNESCO.
     sourceNote: UNESCO World Heritage List, "Borobudur Temple Compounds" (inscribed 1991)
+    confidence: high
+  - text: "Menurut Sensus Penduduk 2020 dari BPS, penduduk Indonesia ada 270,20 juta jiwa. Artinya tiap kebijakan nasional menyentuh lebih banyak orang daripada gabungan penduduk banyak negara."
+    sourceNote: BPS, Hasil Sensus Penduduk 2020 (Berita Resmi Statistik, Januari 2021)
+    confidence: high
+  - text: "Survei APJII 2024 mencatat penetrasi internet Indonesia 79,5%. Sisanya, sekitar satu dari lima orang, masih belum terhubung, dan itu bukan angka kecil."
+    sourceNote: APJII, Survei Penetrasi Internet Indonesia 2024
     confidence: high
 
 educational_thread:
@@ -85,17 +88,6 @@ storytelling:
   - text: Ada mahasiswa yang selalu menahan pertanyaan karena takut kelihatan bodoh. Suatu hari ada yang akhirnya angkat tangan, dan setengah kelas langsung lega karena mereka juga bingung. Pertanyaan yang ditahan cuma bikin bingung bareng-bareng.
   - text: Bayangin presentasi pertama di kantor, slide kebalik urutannya dan baru sadar di tengah jalan. Ketawa sebentar, minta waktu, lanjut. Ternyata orang lebih ingat cara membereskannya daripada kesalahannya.
   - text: Ada orang yang menunda bayar tagihan kecil karena merasa "nanti juga ingat". Dendanya akhirnya lebih besar dari tagihannya. Sejak itu semua tagihan dipasang pengingat, sekecil apa pun.
-
-data_stat:
-  - text: "Menurut Sensus Penduduk 2020 dari BPS, penduduk Indonesia ada 270,20 juta jiwa. Artinya tiap kebijakan nasional menyentuh lebih banyak orang daripada gabungan penduduk banyak negara."
-    sourceNote: BPS, Hasil Sensus Penduduk 2020 (Berita Resmi Statistik, Januari 2021)
-    confidence: high
-  - text: "Gen Z jadi kelompok terbesar di Indonesia: 27,94% penduduk menurut Sensus Penduduk 2020 BPS. Jadi kalau mau bicara ke mayoritas, nadanya perlu cocok buat mereka."
-    sourceNote: BPS, Hasil Sensus Penduduk 2020 (komposisi penduduk menurut generasi)
-    confidence: high
-  - text: "Survei APJII 2024 mencatat penetrasi internet Indonesia 79,5%. Sisanya, sekitar satu dari lima orang, masih belum terhubung, dan itu bukan angka kecil."
-    sourceNote: APJII, Survei Penetrasi Internet Indonesia 2024
-    confidence: high
 
 humor_dakwah_atau_nilai:
   - text: Sedekah itu nggak bikin miskin. Yang bikin miskin itu checkout keranjang belanja jam 12 malam.

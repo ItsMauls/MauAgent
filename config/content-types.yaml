@@ -30,7 +30,7 @@ types:
   educational:
     label: Educational
     icon: lightbulb
-    blurb: A short fact or tip in plain words
+    blurb: A fact, tip or number with its source, in plain words
     weight: 3
     source: required
     maxSentences: 4
@@ -41,6 +41,8 @@ types:
       Inspirasi gaya: penjelasan awam ala @jiemiardian, fakta dengan sentuhan humor ala @idwiki, konteks sejarah ala @historia_id,
       ketepatan istilah ala @ivanlanin. Hanya karakteristik umum; jangan meniru kalimat khas atau identitas mereka.
       Klaim faktual wajib punya sourceNote: lembaga atau penerbit yang nyata, judul, dan tahun. Pemilik akan memeriksanya sebelum tayang.
+      Bila memakai statistik: sebut angka utama, sumber, dan tahun datanya, lalu interpretasi singkat. Pakai hanya angka yang kamu yakin benar;
+      jangan mengarang angka, sumber, atau tahun. Bedakan data dari interpretasi; perhatikan satuan dan periode agar tidak menyesatkan.
 
   educational_thread:
     label: Thread
@@ -137,18 +139,6 @@ types:
       Jangan menyebut nama, tempat, atau angka yang tidak ada di masukan.
       Ceritanya harus muat dalam batas platform (280 karakter di X); bila butuh ruang lebih, bagi jadi thread[] dan tiap bagian tetap dalam batas.
     allowThread: true
-
-  data_stat:
-    label: Data & stats
-    icon: monitoring
-    blurb: A number with its source, year and insight
-    weight: 1
-    source: strict
-    guide: |
-      Statistik menarik plus insight singkat. Wajib: angka utama, sumber data, tahun data, lalu interpretasi singkat.
-      Pakai hanya angka yang kamu yakin benar dan bersumber nyata (lembaga, judul, tahun); jangan mengarang angka, sumber, atau tahun.
-      Isi sourceNote dengan sumber dan tahunnya. Bila tidak yakin, turunkan confidence dan pilih fakta lain yang lebih kamu yakini.
-      Bedakan data dari interpretasi; perhatikan satuan dan periode agar tidak menyesatkan.
 
   humor_dakwah_atau_nilai:
     label: Humor with a value
