@@ -1,17 +1,31 @@
 # Content types for X / Threads text posts (Socmed Specialist batches).
 # Loaded and validated by src/lib/content/config.ts; the prompt and the validator both read this file.
-# Change a weight to 0 to switch a type off.
+# Type keys must be one of CONTENT_TYPES (src/lib/agents/schemas.ts). Change a weight to 0 to switch a type off.
+# Topic angles live in config/angles.yaml, few-shot examples in examples/<type>.txt.
 
-variants: 3              # variants generated per post
+variants: 3              # variants generated per post (each from its own angle)
 maxConsecutive: 2        # the same type never appears more than this many times in a row
 weeklyThreadCap: 2       # thread-type posts per rolling 7 days (generated batches + this batch)
 similarity:
   threshold: 0.5         # Jaccard over normalised words; at or above = too similar
   lookbackDays: 30       # compared with posts created in this window
   action: reject         # reject | review
+maxAttempts: 3           # per post: the first try + 2 regenerations (after a timeout or when every variant fails)
+laughEvery: 4            # "wkwk"/"haha" in at most 1 of this many posts in a batch
 
-# Creative angles for the light types; one is offered to the model, which uses it only if it fits the topic.
-seedThemes: [mudik, deadline, skripsi, ngoding, gajian, macet, kos-kosan, rapat online, diet, begadang, ojol, kuliah]
+# LLM judge (layer 2 of the checks): a separate low-temperature call per post.
+judge:
+  temperature: 0.1
+  minScore: 7            # 0-10; below = needs review
+
+# Web research (Tavily, TAVILY_API_KEY). Per type, research: none | facts | news.
+research:
+  minScore: 0.4          # Tavily relevance score; lower results are dropped
+  maxItems: 5
+  newsTimeRange: month   # day | week | month | year, for news research (satire about a trend)
+  # Facts for educational posts only come from these domains (empty = any domain).
+  credibleDomains: [kompas.com, detik.com, tempo.co, cnnindonesia.com, liputan6.com, idntimes.com, kumparan.com,
+    antaranews.com, bps.go.id, jakarta.go.id, jakartamrt.co.id, transjakarta.co.id, kemkes.go.id, who.int]
 
 # Capitalised words that are not people (lowercase). The real-person check ignores them.
 realPersonAllowlist:
@@ -21,133 +35,132 @@ realPersonAllowlist:
 # source:
 #   none     no source rules
 #   flag     needsSource true → needs review
-#   required the AI must name a source and its confidence; always reviewed by the owner (shown on the draft)
-#   strict   as required, and the post must carry a number, a source and a year, else it is rejected
+#   required a factual claim must cite a research item (sourceNote is filled from its URL by code), else needs review
+#   strict   as required, and the post must carry a number and a year, else it is rejected
 #   story    written from the topic and the uploaded context only; always reviewed (never a real personal claim)
-# seedTheme: true = one of seedThemes is offered to the model as an optional angle.
+# sampling: temperature / top_p sent to the model for this type.
 # label / icon / blurb: how the type appears in the brief form (icon = Material Symbols name).
 types:
   educational:
     label: Educational
     icon: lightbulb
-    blurb: A fact, tip or number with its source, in plain words
+    blurb: A fact or tip from web sources, in plain words
     weight: 3
     source: required
+    research: facts
+    sampling: { temperature: 0.45, top_p: 0.9 }
     maxSentences: 4
     guide: |
-      Fakta atau tips singkat yang mudah dipahami pembaca awam.
-      Format: hook 1 kalimat yang menarik perhatian, isi 1-2 kalimat yang menjelaskan fakta atau tips, penutup ringan bila perlu.
+      Fakta atau tips singkat yang mudah dipahami pembaca awam. Satu ide per post, satu insight yang bisa langsung dipakai.
+      Mulai dari fakta atau tips konkret, bukan "Tahukah kamu". Sertakan contoh nyata, angka, atau langkah spesifik. Nada ngobrol, bukan ceramah.
       Bahasa sehari-hari, bukan gaya textbook atau akademis, tanpa jargon yang tidak perlu.
-      Inspirasi gaya: penjelasan awam ala @jiemiardian, fakta dengan sentuhan humor ala @idwiki, konteks sejarah ala @historia_id,
-      ketepatan istilah ala @ivanlanin. Hanya karakteristik umum; jangan meniru kalimat khas atau identitas mereka.
-      Klaim faktual wajib punya sourceNote: lembaga atau penerbit yang nyata, judul, dan tahun. Pemilik akan memeriksanya sebelum tayang.
-      Bila memakai statistik: sebut angka utama, sumber, dan tahun datanya, lalu interpretasi singkat. Pakai hanya angka yang kamu yakin benar;
-      jangan mengarang angka, sumber, atau tahun. Bedakan data dari interpretasi; perhatikan satuan dan periode agar tidak menyesatkan.
+      Klaim faktual hanya dari item FAKTA; cantumkan nomornya di sources. Tanpa FAKTA, tulis tips umum tanpa angka, harga, atau nama tempat.
+      Bila memakai statistik: sebut angka utama dan tahunnya persis seperti di FAKTA, lalu interpretasi singkat.
 
-  educational_thread:
+  thread:
     label: Thread
     icon: format_list_numbered
     blurb: A numbered how-to or list, 5-10 parts
     weight: 1
     source: flag
+    research: facts
+    sampling: { temperature: 0.45, top_p: 0.9 }
     thread: { min: 5, max: 10, marker: "🧵" }
     guide: |
       Utas berisi tutorial, rekomendasi, panduan, atau daftar informatif.
       Format: text = hook kuat yang diakhiri penanda 🧵. thread = 5-10 bagian bernomor ("1. ...", "2. ...", berurutan),
       lalu satu bagian terakhir tanpa nomor berisi rangkuman dan ajakan berdiskusi.
-      Informasi bertahap dan logis, tanpa pengulangan dan kalimat pengisi; tiap bagian harus menambah sesuatu.
-      Inspirasi: judul menggelitik dan struktur utas ala @asumsico.
-      Bila utas memuat klaim faktual tanpa sumber di bahan, isi needsSource true.
+      Hook menjanjikan sesuatu yang spesifik (hasil, angka, atau konflik), bukan sekadar "Thread:".
+      Informasi bertahap dan logis, tanpa pengulangan dan kalimat pengisi; tiap bagian harus menambah sesuatu,
+      berdiri sendiri tapi mengalir ke bagian berikutnya. Penutup tidak meminta like atau RT.
+      Bila utas memuat klaim faktual yang tidak ada di FAKTA, isi needsSource true.
 
-  random_receh:
+  light_humor:
     label: Light humor
     icon: sentiment_very_satisfied
-    blurb: One-line wordplay with the punchline last
+    blurb: One-line observation with the punchline last
     weight: 2
-    seedTheme: true
     source: none
-    maxSentences: 1
+    research: none
+    sampling: { temperature: 0.65, top_p: 0.9 }
+    maxSentences: 2
     guide: |
-      Humor ringan, garing, wordplay, atau pantun receh.
-      Satu kalimat, punchline di bagian akhir, tanpa penjelasan setelah punchline.
-      Spontan, singkat, mudah dipahami; utamakan permainan kata atau kejutan sederhana, bukan humor yang butuh konteks panjang.
+      Humor ringan dari momen kecil yang relatable. Punchline di bagian akhir, tanpa penjelasan setelah punchline.
+      Singkat dan mudah dipahami; kejutan sederhana, bukan humor yang butuh konteks panjang.
+      Tujuannya bikin senyum, bukan ngakak paksa. Boleh tanpa emoji. Tidak menyerang kelompok, SARA, atau individu.
 
-  one_liner_satire:
+  satire:
     label: Satire
     icon: theater_comedy
     blurb: A relatable ironic observation, 1-2 sentences
     weight: 2
-    seedTheme: true
     source: none
+    research: news
+    sampling: { temperature: 0.7, top_p: 0.9 }
     maxSentences: 2
     noHashtags: true
     guide: |
-      Observasi satir tentang kehidupan sehari-hari yang relatable (kerja, teknologi, pendidikan, hubungan sosial).
-      1-2 kalimat, tanpa hashtag. Ironi atau observasi sosial yang cerdas.
-      Boleh tajam, tapi tidak menyerang individu atau kelompok. Inspirasi: @plisitin, @hati2diInternet, @yeahmahasiswa.
+      Observasi satir tentang fenomena atau kebiasaan yang relatable. 1-2 kalimat, tanpa hashtag.
+      Sasaran: kebiasaan, tren, sistem, atau kontradiksi, bukan orang tertentu.
+      Pakai ironi, melebih-lebihkan, atau deadpan; tidak perlu penanda "wkwk". Hindari politik partisan dan isu sensitif.
+      Boleh tajam, tapi tidak menyerang individu atau kelompok. Item BERITA hanya bahan memahami tren; jangan menyebut angka atau klaim darinya.
 
-  spontan:
+  spontaneous:
     label: Spontaneous
     icon: chat_bubble
-    blurb: A casual confession, menfess style
+    blurb: One short, unpolished thought
     weight: 2
-    seedTheme: true
     source: none
+    research: none
+    sampling: { temperature: 0.65, top_p: 0.9 }
     guide: |
-      Pikiran spontan, curhat ringan, atau pengakuan sehari-hari bernuansa menfess. Boleh diawali "menfess:".
+      Satu pikiran pendek, mentah, tidak dipoles: satu perasaan atau satu pengamatan. Tidak perlu punchline atau kesimpulan; boleh menggantung.
       Pembuka santai, tanpa struktur formal, boleh sedikit self-deprecating. Jangan terasa seperti artikel.
-      Jangan menyajikan cerita pribadi spesifik seolah benar-benar dialami seseorang; tetap pada situasi umum yang relatable.
-      Inspirasi: karakteristik umum percakapan @collegemenfess dan @tanyarlfess.
+      Jangan menyajikan cerita pribadi spesifik seolah benar-benar dialami; tetap pada situasi umum yang relatable.
 
-  question_poll:
+  question:
     label: Question / poll
     icon: ballot
     blurb: An easy question, optionally 2-4 options
     weight: 2
-    seedTheme: true
     source: none
+    research: none
+    sampling: { temperature: 0.6, top_p: 0.9 }
     question: true
     guide: |
       Pertanyaan singkat dan jelas yang mudah dijawab, untuk memancing interaksi.
       Bila memakai pilihan, tulis 2-4 opsi di baris terpisah (A. / B. / C. / D.) yang relevan dan mudah dibedakan.
       Jangan memaksakan opsi bila pertanyaan terbuka lebih cocok. Hindari pertanyaan yang terlalu luas.
+      Spesifik dan bisa dijawab dalam satu kalimat. Tanpa penjelasan panjang atau "yuk jawab di komentar".
 
   hot_take:
     label: Hot take
     icon: local_fire_department
     blurb: A firm counter-opinion with one reason
     weight: 2
-    seedTheme: true
     source: none
+    research: facts
+    sampling: { temperature: 0.6, top_p: 0.9 }
     maxSentences: 3
     guide: |
       Opini kontra-arus yang aman dan mengundang diskusi: satu klaim tegas plus satu alasan pendukung yang jelas.
       Tidak kontroversial demi engagement, tidak menyerang individu, kelompok, atau identitas.
-      Sajikan sebagai opini, bukan fakta objektif.
+      Sajikan sebagai opini, bukan fakta objektif. Bila alasannya memakai fakta, ambil dari FAKTA dan cantumkan nomornya.
+      Tanpa "unpopular opinion" dan tanpa hedging berlebihan.
 
-  storytelling:
+  story:
     label: Story
     icon: auto_stories
     blurb: Retells one of your own stories, nothing added
     weight: 1
     source: story
+    research: none
+    sampling: { temperature: 0.6, top_p: 0.9 }
+    allowThread: true
     guide: |
       Cerita singkat dan bermakna tentang topik.
-      Alur: awal (konteks atau pemicu), tengah (kejadian, konflik kecil, perubahan sudut pandang), akhir (hasil atau refleksi).
+      Mulai di tengah kejadian. Alur: situasi, hal tak terduga, lalu akhir yang nendang atau getir.
+      Detail spesifik (jam, benda, kalimat yang diucapkan) hanya bila ada di topik atau konteks.
       Bangun hanya dari topik dan konteks yang diunggah pemilik. Jangan menyajikan pengalaman pribadi yang dikarang sebagai kejadian nyata:
       bila konteks tidak memuat kejadian nyata, tulis sebagai skenario yang relatable ("bayangin...", "ada orang yang...") atau sudut pandang orang ketiga.
-      Jangan menyebut nama, tempat, atau angka yang tidak ada di masukan.
       Ceritanya harus muat dalam batas platform (280 karakter di X); bila butuh ruang lebih, bagi jadi thread[] dan tiap bagian tetap dalam batas.
-    allowThread: true
-
-  humor_dakwah_atau_nilai:
-    label: Humor with a value
-    icon: volunteer_activism
-    blurb: Light humor carrying a positive message
-    weight: 0
-    seedTheme: true
-    source: none
-    guide: |
-      Humor ringan yang membawa pesan moral atau nilai positif. Pesan harus jelas, nada ramah dan tidak menggurui.
-      Humor adalah sarana, bukan pengganti substansi. Jangan merendahkan keyakinan atau kelompok mana pun.
-      Inspirasi: karakteristik umum humor @NUgarislucu.

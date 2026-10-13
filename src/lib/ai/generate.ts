@@ -152,6 +152,7 @@ export async function generateStructured<T extends z.ZodTypeAny>(role: string, p
       messages,
       max_tokens: cfg.maxOutputTokens,
       temperature: cfg.temperature,
+      top_p: cfg.topP,
       ...reasoningParams(cfg.reasoningEffort, meta.reasoning),
       ...(meta.supportsJsonSchema && { response_format: { type: "json_schema", json_schema: { name: "output", strict: false, schema: jsonSchema } } }),
     };

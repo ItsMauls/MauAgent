@@ -62,7 +62,7 @@ export const INTEGRATIONS: Entry[] = [
   { id: "s3", name: "S3 storage", icon: "cloud", href: "/settings", status: checked("s3") },
   { id: "orshot", name: "Orshot", icon: "send", href: "/accounts", status: notBuilt("Publisher not built yet") },
   { id: "elevenlabs", name: "ElevenLabs", icon: "graphic_eq", href: "/settings", status: notBuilt("Not built yet") },
-  { id: "apify", name: "Apify TikTok Trends", icon: "trending_up", href: "/trends", status: checked("apify", "APIFY_API_TOKEN") },
+  { id: "apify", name: "Apify TikTok Trends", icon: "trending_up", href: "/trends/tiktok", status: checked("apify", "APIFY_API_TOKEN") },
   { id: "vidiq", name: "vidIQ", icon: "trending_up", href: "/settings", status: notBuilt("Not built yet") },
   { id: "buffer", name: "Buffer (publishing)", icon: "send", href: "/connections", status: checked("buffer", "BUFFER_API_KEY") },
   { id: "threads", name: "Threads", icon: "alternate_email", href: "/settings", status: soon },

@@ -7,8 +7,8 @@ import { ContextTabs } from "./context-tabs";
 
 /** What the owner should know about a type before picking it. */
 const NOTE: Record<string, { icon: string; text: string; warn?: boolean }> = {
-  required: { icon: "fact_check", text: "AI names a source + confidence for you to check", warn: true },
-  strict: { icon: "fact_check", text: "AI names a source, year + confidence to check", warn: true },
+  required: { icon: "fact_check", text: "Facts come from web sources, linked on the draft", warn: true },
+  strict: { icon: "fact_check", text: "Facts with number + year from web sources", warn: true },
   story: { icon: "visibility", text: "Always reviewed before it can post", warn: true },
 };
 

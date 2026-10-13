@@ -123,8 +123,19 @@ const postThread = z.array(z.string().trim().min(1).max(2000)).max(24).default([
 export const ReviewStatus = z.enum(["approved", "needs_review", "rejected"]);
 export const Confidence = z.enum(["high", "medium", "low"]);
 
+/** The one list of text-post content types: config, prompt, validator and output all use it. */
+export const CONTENT_TYPES = ["educational", "thread", "light_humor", "satire", "spontaneous", "question", "hot_take", "story"] as const;
+export const ContentType = z.enum(CONTENT_TYPES);
+export type ContentType = z.infer<typeof ContentType>;
+/** Type names used by batches made before the enum. */
+const LEGACY_TYPES: Record<string, ContentType> = {
+  educational_thread: "thread", random_receh: "light_humor", one_liner_satire: "satire", spontan: "spontaneous",
+  question_poll: "question", storytelling: "story", humor_dakwah_atau_nilai: "light_humor",
+};
+export const normalizeType = (t: unknown) => (typeof t === "string" ? LEGACY_TYPES[t] ?? t : t);
+
 /** One validated variant kept next to a post, so the owner can swap it in. */
-const AltVariant = z.object({ text: postText, thread: postThread, sourceNote: z.string().nullish(), confidence: Confidence.nullish(), status: ReviewStatus, reasons: z.array(z.string()).default([]) });
+const AltVariant = z.object({ text: postText, thread: postThread, angle: z.string().nullish(), sourceNote: z.string().nullish(), confidence: Confidence.nullish(), status: ReviewStatus, reasons: z.array(z.string()).default([]) });
 
 /**
  * Text-post batch artifact. Batches made before content types only have text + thread; the other fields are set by
@@ -137,7 +148,9 @@ export const SocialPosts = z.object({
       z.object({
         text: postText,
         thread: postThread,
-        type: z.string().optional(),
+        type: z.preprocess(normalizeType, ContentType).optional().catch(undefined),
+        /** The angle (config/angles.yaml) this post was written from. */
+        angle: z.string().nullish(),
         status: ReviewStatus.optional(),
         reasons: z.array(z.string()).default([]),
         sourceNote: z.string().nullish(),
@@ -151,18 +164,21 @@ export const SocialPosts = z.object({
 });
 export type SocialPosts = z.infer<typeof SocialPosts>;
 
-/** The model's answer for one post: exactly `n` variants of the picked content type. */
+/**
+ * The model's answer for one post: exactly `n` variants, variant k written from angle k. The model only cites the
+ * numbers of the research items it used; the code turns them into sourceNote URLs.
+ */
 export const contentVariants = (n: number) =>
   z.object({
-    type: z.string(),
+    type: ContentType,
     variants: z
       .array(
         z.object({
           text: postText,
           thread: postThread,
-          sourceNote: z.string().nullable().describe("for a factual claim: the real publisher or institution, title and year of the source; null when the post states no fact"),
-          confidence: Confidence.nullable().describe("for a factual claim: how sure you are that the fact and its source are real and correct (high, medium or low); null when the post states no fact"),
-          needsSource: z.boolean().describe("true when a claim still has no source you can name"),
+          sources: z.array(z.number().int()).default([]).describe("numbers of the FAKTA items the post's claims come from; empty when it states no fact"),
+          confidence: Confidence.nullable().describe("for a factual claim: how sure you are it matches the FAKTA items (high, medium or low); null when the post states no fact"),
+          needsSource: z.boolean().describe("true when a claim is not backed by any FAKTA item"),
         }),
       )
       .length(n),
@@ -177,7 +193,7 @@ export type VoiceProfile = z.infer<typeof VoiceProfile>;
 
 /** Agent roles that have a persona (Producer/Videographer/Post-production only speak in deliberations). */
 export const AGENT_ROLES = [
-  "accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction", "accountTeam",
+  "accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction", "accountTeam", "socmedSpecialist",
 ] as const;
 export const AgentRole = z.enum(AGENT_ROLES);
 export type AgentRole = z.infer<typeof AgentRole>;

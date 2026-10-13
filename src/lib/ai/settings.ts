@@ -52,7 +52,8 @@ export async function getAiSettings() {
 }
 export const clearAiSettingsCache = () => void (cache = null);
 
-export type AiConfig = { model: string; reasoningEffort: Effort; maxOutputTokens: number; temperature: number };
+/** topP is never set from Settings; a caller passes it per call (content types set it per type). */
+export type AiConfig = { model: string; reasoningEffort: Effort; maxOutputTokens: number; temperature: number; topP?: number };
 
 /** Pure merge: env default model < DB global < per-agent override. */
 export function mergeAiConfig(role: string, envModel: string, s: Pick<AiSettingsRow, "defaultModel" | "reasoningEffort" | "maxOutputTokens" | "temperature" | "perAgentOverrides">): AiConfig {

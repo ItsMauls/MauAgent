@@ -9,6 +9,7 @@ export type ChatBody = {
   messages: { role: "system" | "user" | "assistant"; content: string | ChatPart[] }[];
   max_tokens: number;
   temperature?: number;
+  top_p?: number;
   reasoning?: Record<string, unknown>;
   response_format?: Record<string, unknown>;
 };

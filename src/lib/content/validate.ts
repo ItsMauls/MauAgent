@@ -1,6 +1,7 @@
 // Step 4 of a text-post batch: automatic checks on one generated variant. Pure; the prompt asks for the same rules,
 // but only what passes here can be scheduled.
 import { textProblem } from "@/lib/publish";
+import type { ContentType } from "@/lib/agents/schemas";
 import type { Banned, ContentConfig } from "./config";
 
 export type ReviewStatus = "approved" | "needs_review" | "rejected";
@@ -10,11 +11,11 @@ export type Verdict = { status: ReviewStatus; reasons: string[] };
 
 export type CheckCtx = {
   cfg: ContentConfig;
-  type: string;
+  type: ContentType;
   platforms: string[];
   /** The brief topic (plus brand), which sets the expected language and the names that are not "real people". */
   topic: string;
-  /** Text of the owner's uploaded context: names that appear there are not flagged as unknown people. */
+  /** Uploaded context plus research (places, facts): names that appear there are not flagged. */
   context?: string;
   banned: Banned;
   /** Texts of recent posts and of earlier posts in this batch, for the similarity check. */
@@ -79,6 +80,40 @@ export function possiblePeople(text: string, context: string, allowlist: string[
 
 const OPTION = /^\s*(?:[A-Da-d][.)]|[-•]|\d[.)])\s+\S/;
 
+const EMOJI = /\p{Extended_Pictographic}/gu;
+export const emojis = (s: string) => s.match(EMOJI) ?? [];
+const LAUGH = /(?<![\p{L}])(?:w+k+(?:w+k+)+|wkwk\w*|(?:ha){2,}|(?:he){2,})(?![\p{L}])/iu;
+export const laughs = (s: string) => LAUGH.test(s);
+const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+/** The first three words, normalised: two posts in a batch may not open the same way. */
+export const opening = (s: string) => words(s).slice(0, 3).join(" ");
+/** The emoji a post ends on (ignoring trailing punctuation), or null. */
+const closingEmoji = (s: string) => s.trim().match(/(\p{Extended_Pictographic})[\p{M}️‍\p{Extended_Pictographic}\s.!?]*$/u)?.[1] ?? null;
+const GUE = /(?<![\p{L}])(?:gue|gw|gua|lo|lu|elo|elu)(?![\p{L}])/iu;
+const AKU = /(?<![\p{L}])(?:aku|kamu)(?![\p{L}])/iu;
+
+/** What the batch has used so far, for the checks that look across posts. */
+export type BatchState = { texts: string[]; laughs: number; laughQuota: number; closingEmojis: string[] };
+
+/** Reject reasons that depend on the other posts in the batch (empty = fine). */
+export function batchProblems(v: Variant, b: BatchState): string[] {
+  const out: string[] = [];
+  if (laughs([v.text, ...v.thread].join("\n")) && b.laughs >= b.laughQuota) out.push(`"wkwk"/"haha" already used ${b.laughs} time(s) in this batch (max ${b.laughQuota})`);
+  const open = opening(v.text);
+  if (open && b.texts.some((t) => opening(t) === open)) out.push(`Opens like another post in this batch ("${open}")`);
+  const end = closingEmoji(v.text);
+  if (end && b.closingEmojis.includes(end)) out.push(`Ends on the same emoji as another post in this batch (${end})`);
+  return out;
+}
+
+/** Adds an accepted post to the batch state. */
+export function addToBatch(b: BatchState, v: Variant) {
+  b.texts.push(v.text);
+  if (laughs([v.text, ...v.thread].join("\n"))) b.laughs++;
+  const end = closingEmoji(v.text);
+  if (end) b.closingEmojis.push(end);
+}
+
 /**
  * Review gate before anything goes to Buffer. `variant` 0 is the post itself, k is alternatives[k-1]. A rejected
  * variant never goes; a needs_review one goes only when the owner ticked Reviewed. Edited text is re-checked against
@@ -139,6 +174,16 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
   const got = detectLanguage(all);
   if (want && got && want !== got) review.push(`Written in ${got === "id" ? "Indonesian" : "English"}, the topic is in ${want === "id" ? "Indonesian" : "English"}`);
 
+  // Style rules that read as AI when broken.
+  for (const [i, t] of parts.entries()) {
+    const n = emojis(c.thread && i === 0 ? t.replace(c.thread.marker, "") : t).length;
+    if (n > 1) reject.push(`${parts.length > 1 ? `Part ${i + 1}: ` : ""}${n} emoji (max 1)`);
+  }
+  if (/[—–]/.test(all)) reject.push("Contains an em dash");
+  const opener = ctx.banned.openers.find((o) => v.text.trim().toLowerCase().startsWith(o.toLowerCase()));
+  if (opener) reject.push(`Template opener: "${opener}"`);
+  if (GUE.test(all) && AKU.test(all)) reject.push('Mixes "gue/lo" with "aku/kamu"');
+
   // Banned words.
   const hardHits = bannedHits(all, ctx.banned.reject);
   if (hardHits.length) reject.push(`Banned: ${hardHits.join(", ")}`);
@@ -150,16 +195,14 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
   if (top >= ctx.cfg.similarity.threshold)
     (ctx.cfg.similarity.action === "reject" ? reject : review).push(`Too similar to a recent post (${Math.round(top * 100)}% word overlap)`);
 
-  // Sources. The AI names its own source and how sure it is; nothing factual is approved on that alone, the owner
-  // checks it on the draft. needsSource false is never taken as proof.
+  // Sources. sourceNote is set by code from the research items the post cites, never written by the model. A claim
+  // without a cited item, or one the model is unsure of, waits for the owner. The judge checks it matches the items.
   const note = v.sourceNote?.trim() ?? "";
-  const sure = v.confidence ? `confidence ${v.confidence}` : "no confidence given";
   if (c.source === "flag" && v.needsSource) review.push("Needs a source for its factual claims");
   if (c.source === "required" || c.source === "strict") {
-    if (!note) review.push("No source named: add one or remove the claim");
-    else review.push(`Check the AI-provided source (${sure}): ${note}`);
-    if (v.confidence === "low" || (note && !v.confidence)) review.push("The AI is not sure of this fact: verify it before publishing");
-    if (v.needsSource) review.push("The AI marked a claim as still unsourced");
+    if (!note && (v.needsSource || /\d/.test(all))) review.push("States a fact or number without a research source");
+    if (note && v.confidence === "low") review.push("The AI is not sure the claim matches its source: verify it before publishing");
+    if (note && v.needsSource) review.push("The AI marked a claim as still unsourced");
   }
   if (c.source === "strict") {
     if (!/\d/.test(v.text)) reject.push("A statistic post needs the number");
@@ -170,7 +213,7 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
 
   // Possible real people.
   const people = possiblePeople(all, `${ctx.topic} ${ctx.context ?? ""} ${note}`, ctx.cfg.realPersonAllowlist);
-  if (people.length) review.push(`Mentions what may be a real person: ${[...new Set(people)].slice(0, 3).join(", ")}`);
+  if (people.length) review.push(`Mentions what may be a real person, brand or place outside the research: ${[...new Set(people)].slice(0, 3).join(", ")}`);
 
   if (reject.length) return { status: "rejected", reasons: [...reject, ...review] };
   return review.length ? { status: "needs_review", reasons: review } : { status: "approved", reasons: [] };

@@ -1,0 +1,141 @@
+# Angles per topic and content type. Each variant of a post is written from its own angle, picked at random by code:
+# no angle twice in a batch, and none used in the last `historySize` posts (while unused ones are left).
+# A topic entry applies when every phrase in `match` appears in the batch topic (case-insensitive).
+# placesQuery / factsQuery: optional web-search queries (Tavily) for real places and facts on this topic.
+# A topic with no entry (or a type with no list) gets no angle; the model then works from the topic alone.
+
+historySize: 30
+
+topics:
+  - match: [first date, blok m]
+    placesQuery: rekomendasi kafe dan tempat makan untuk first date di Blok M Jakarta Selatan
+    factsQuery: tips memilih tempat first date di Blok M Jakarta akses MRT TransJakarta parkir jam ramai
+    angles:
+      educational:
+        - pilih tempat sesuai budget berdua, bukan yang paling hits
+        - datang di jam sepi supaya bisa dapat tempat duduk dan ngobrol tanpa teriak
+        - akses MRT atau TransJakarta biar nggak ribet soal pulang
+        - cek parkir dulu kalau salah satu bawa kendaraan
+        - pilih tempat yang enak buat ngobrol lama, bukan cuma buat foto
+        - siapkan tempat cadangan kalau tempat pertama penuh
+        - jalan kaki antar tempat di area yang sama biar date nggak cuma duduk
+        - cek menu dan kisaran harga sebelum berangkat biar nggak kaget
+        - pilih tempat yang suasananya nggak terlalu bising
+        - atur durasi date pertama, lebih baik pendek tapi enak
+        - kasih tahu jam pulang dari awal biar sama-sama nyaman
+        - pilih titik ketemu yang jelas dan gampang dicari
+        - siapkan opsi kalau hujan
+        - tempat yang ada aktivitas kecil bikin obrolan lebih cair
+        - sepakati soal bayar sebelum suasana jadi canggung
+      light_humor:
+        - bingung siapa yang bayar pas bill datang
+        - bingung mau duduk sebelahan atau hadap-hadapan
+        - mati gaya setelah bahas cuaca
+        - chat grup heboh ngasih saran sebelum berangkat
+        - nyasar padahal titik ketemunya udah di-share
+        - pura-pura santai padahal udah ganti baju tiga kali
+        - pesan menu yang susah dimakan dengan anggun
+        - dua-duanya nunggu di pintu yang berbeda
+        - ketawa kebanyakan gara-gara gugup
+        - nggak tahu harus salaman, cipika-cipiki, atau cuma dadah
+        - ngecek HP diam-diam buat lapor ke grup
+        - bingung kapan waktu yang pas buat pamit
+        - salah sebut nama menu dengan percaya diri
+        - jalan bareng tapi ritme langkahnya beda
+        - pas mau foto berdua nggak ada yang berani nawarin
+      spontaneous:
+        - suasana Blok M sore-sore yang bikin pengin jalan pelan
+        - deg-degan nunggu di stasiun
+        - satu pikiran soal makanan yang dipesan berdua
+        - kenangan nongkrong di Blok M zaman sekolah
+        - lampu-lampu jalan malam yang bikin obrolan jadi lebih jujur
+        - rasa canggung yang hilang pelan-pelan
+        - pulang naik MRT sambil senyum sendiri
+        - ngerasa first date sekarang beda sama dulu
+        - suara hujan di luar pas lagi ngobrol
+        - kepikiran outfit yang salah pilih
+        - lega pas ternyata obrolannya nyambung
+        - perasaan pas dia datang lebih dulu
+        - satu kalimat dari dia yang kepikiran terus
+        - bingung ini date atau cuma nongkrong
+        - Blok M yang rasanya selalu ramai tapi tetap hangat
+      satire:
+        - first date demi konten, bukan demi kenalan
+        - tempat aesthetic tapi kursinya bikin punggung protes
+        - overplanning itinerary first date kayak rapat proyek
+        - riset berlebihan soal latar belakang si dia sebelum ketemu
+        - antre setengah jam demi menu yang viral
+        - lebih sibuk cari angle foto daripada dengerin cerita
+        - review tempat yang lebih detail dari CV
+        - first date dengan agenda dan target jelas
+        - tempat hits yang playlist-nya lebih kencang dari obrolan
+        - harga minuman yang bikin evaluasi ulang perasaan
+        - nyari tempat yang instagramable tapi nggak ada colokan buat pulang
+        - date pertama yang dibahas di grup lebih lama dari date-nya
+        - checklist red flag yang lebih panjang dari daftar menu
+        - pura-pura nggak ngecek rating tempat padahal udah baca semua review
+        - tren tempat baru tiap minggu yang bikin bingung mau ke mana
+      thread:
+        - panduan first date di Blok M dari berangkat sampai pulang
+        - cara milih tempat first date sesuai budget
+        - urutan date yang enak di satu area tanpa pindah jauh
+        - persiapan sebelum first date biar nggak panik
+        - rencana cadangan kalau hal-hal nggak sesuai rencana
+        - cara bikin obrolan first date nggak kaku
+        - checklist kecil sebelum berangkat
+        - etika first date yang sering dilupakan
+        - cara pulang yang aman dan nyaman setelah date malam
+        - first date hemat tapi tetap berkesan
+        - memilih jam yang pas untuk first date
+        - hal yang sebaiknya dihindari di first date
+        - cara menutup first date dengan baik
+        - tanda tempat itu cocok buat ngobrol lama
+        - transportasi umum untuk first date tanpa ribet
+      question:
+        - lebih milih first date makan atau jalan-jalan
+        - siapa yang sebaiknya bayar di first date
+        - jam paling pas buat first date
+        - tempat first date paling aman buat orang pemalu
+        - berapa lama first date yang ideal
+        - ketemu langsung di tempat atau berangkat bareng
+        - hal kecil yang bikin first date berkesan
+        - first date di tempat ramai atau sepi
+        - topik obrolan andalan pas first date
+        - naik transportasi umum atau kendaraan pribadi buat first date
+        - first date yang gagal tapi jadi cerita lucu
+        - red flag paling kecil yang langsung bikin ilfeel
+        - ngabarin teman sebelum first date atau diam-diam
+        - foto bareng di first date itu wajar atau kecepetan
+        - budget wajar buat first date
+      hot_take:
+        - first date nggak perlu di tempat mahal
+        - first date yang singkat lebih baik dari yang dipaksa panjang
+        - split bill di first date itu wajar
+        - tempat ramai lebih aman buat first date daripada tempat sepi
+        - itinerary first date terlalu detail malah bikin kaku
+        - foto-foto di first date bisa nunggu
+        - jalan kaki bareng lebih jujur daripada duduk lama
+        - first date di jam makan siang itu underrated
+        - nggak apa-apa first date tanpa kesimpulan
+        - tempat favorit sendiri lebih baik dari tempat viral
+        - transportasi umum bikin first date lebih santai
+        - jujur soal budget dari awal itu menarik
+        - ngobrol lebih penting dari menu
+        - first date nggak harus romantis
+        - pulang tepat waktu itu tanda respek
+      story:
+        - skenario dua orang yang saling nunggu di pintu berbeda
+        - skenario first date yang batal karena hujan lalu pindah tempat
+        - skenario obrolan yang nyambung gara-gara salah pesan menu
+        - skenario mati gaya yang diselamatkan pelayan
+        - skenario nyasar bareng dan malah jadi bahan ketawa
+        - skenario dua orang yang sama-sama riset tempat yang sama
+        - skenario pulang bareng naik MRT dan obrolan berlanjut
+        - skenario first date yang dimulai canggung dan selesai terlalu cepat
+        - skenario bingung bayar yang berakhir dengan janji date kedua
+        - skenario tempat penuh dan rencana cadangan yang lebih seru
+        - skenario chat grup yang terus nanya kabar
+        - skenario lupa nama si dia di menit pertama
+        - skenario hujan yang bikin ngobrol lebih lama
+        - skenario foto pertama yang blur tapi disimpan
+        - skenario dua orang yang ternyata pernah satu sekolah

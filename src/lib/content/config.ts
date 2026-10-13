@@ -1,9 +1,11 @@
-// Content-type config for text posts: config/content-types.yaml, few_shot_examples.yaml and banned.yaml, parsed with
-// `yaml` and validated with Zod. The prompt and the validator both read this, so a rule lives in one place.
+// Content-type config for text posts: config/content-types.yaml, angles.yaml and banned.yaml (parsed with `yaml`,
+// validated with Zod) plus the few-shot files in examples/. The prompt and the validator both read this, so a rule
+// lives in one place. Type keys come from CONTENT_TYPES (src/lib/agents/schemas.ts), the single list of types.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { CONTENT_TYPES, ContentType } from "@/lib/agents/schemas";
 
 const SourceRule = z.enum(["none", "flag", "required", "strict", "story"]);
 
@@ -13,9 +15,11 @@ const TypeConfig = z.object({
   icon: z.string().trim().min(1).default("article"),
   blurb: z.string().trim().default(""),
   weight: z.number().min(0),
-  /** One of seedThemes is offered to the model as an optional angle. */
-  seedTheme: z.boolean().default(false),
   source: SourceRule,
+  /** Web research before writing: facts (credible domains), news (recent, for satire on a trend) or none. */
+  research: z.enum(["none", "facts", "news"]).default("none"),
+  /** Sampling sent to the model for this type. */
+  sampling: z.object({ temperature: z.number().min(0).max(2), top_p: z.number().gt(0).max(1) }),
   guide: z.string().trim().min(1),
   maxSentences: z.number().int().positive().optional(),
   /** A thread type: text ends with `marker`, then `min`-`max` numbered parts and one closing part. */
@@ -32,20 +36,45 @@ export const ContentConfig = z.object({
   maxConsecutive: z.number().int().min(1),
   weeklyThreadCap: z.number().int().min(0),
   similarity: z.object({ threshold: z.number().gt(0).max(1), lookbackDays: z.number().int().positive(), action: z.enum(["reject", "review"]) }),
-  seedThemes: z.array(z.string().trim().min(1)).min(1),
+  maxAttempts: z.number().int().min(1).max(5),
+  laughEvery: z.number().int().min(1),
+  judge: z.object({ temperature: z.number().min(0).max(2), minScore: z.number().min(0).max(10) }),
+  research: z.object({
+    minScore: z.number().min(0).max(1),
+    maxItems: z.number().int().min(1).max(10),
+    newsTimeRange: z.enum(["day", "week", "month", "year"]),
+    credibleDomains: z.array(z.string().trim().min(1)).default([]),
+  }),
   realPersonAllowlist: z.array(z.string()).default([]),
-  types: z.record(z.string().regex(/^[a-z_]+$/), TypeConfig).refine((t) => Object.values(t).some((x) => x.weight > 0), "at least one type needs a weight above 0"),
+  types: z.partialRecord(ContentType, TypeConfig).refine((t) => Object.values(t).some((x) => x && x.weight > 0), "at least one type needs a weight above 0"),
 });
 export type ContentConfig = z.infer<typeof ContentConfig>;
 
-export const Example = z.object({ text: z.string().trim().min(1), thread: z.array(z.string().trim().min(1)).default([]), sourceNote: z.string().optional(), confidence: z.enum(["high", "medium", "low"]).optional() });
-export const Examples = z.record(z.string(), z.array(Example).min(1));
-export type Example = z.infer<typeof Example>;
+export const Angles = z.object({
+  historySize: z.number().int().min(0),
+  topics: z.array(z.object({
+    match: z.array(z.string().trim().min(1)).min(1),
+    placesQuery: z.string().trim().min(1).optional(),
+    factsQuery: z.string().trim().min(1).optional(),
+    angles: z.partialRecord(ContentType, z.array(z.string().trim().min(1)).min(1)),
+  })).default([]),
+});
+export type Angles = z.infer<typeof Angles>;
+export type TopicAngles = Angles["topics"][number];
 
-export const Banned = z.object({ reject: z.array(z.string().trim().min(1)).default([]), review: z.array(z.string().trim().min(1)).default([]) });
+export type Example = { text: string; thread: string[] };
+
+export const Banned = z.object({
+  reject: z.array(z.string().trim().min(1)).default([]),
+  review: z.array(z.string().trim().min(1)).default([]),
+  /** A post may not start with one of these. */
+  openers: z.array(z.string().trim().min(1)).default([]),
+  /** A batch topic with one of these is refused; research results with one are dropped. */
+  sensitiveTopics: z.array(z.string().trim().min(1)).default([]),
+});
 export type Banned = z.infer<typeof Banned>;
 
-export type ContentSetup = { config: ContentConfig; examples: Record<string, Example[]>; banned: Banned };
+export type ContentSetup = { config: ContentConfig; angles: Angles; examples: Partial<Record<ContentType, Example[]>>; banned: Banned };
 
 /** Parses one YAML text against a schema; the error names the file and the failing path. */
 export function parseYaml<T extends z.ZodTypeAny>(file: string, text: string, schema: T): z.infer<T> {
@@ -60,22 +89,47 @@ export function parseYaml<T extends z.ZodTypeAny>(file: string, text: string, sc
   return r.data;
 }
 
-/** Cross-file checks: every example belongs to a configured type. */
-export function buildSetup(texts: { config: string; examples: string; banned: string }): ContentSetup {
-  const config = parseYaml("config/content-types.yaml", texts.config, ContentConfig);
-  const examples = parseYaml("config/few_shot_examples.yaml", texts.examples, Examples);
-  const unknown = Object.keys(examples).filter((t) => !config.types[t]);
-  if (unknown.length) throw new Error(`config/few_shot_examples.yaml: unknown type ${unknown.join(", ")}`);
-  return { config, examples, banned: parseYaml("config/banned.yaml", texts.banned, Banned) };
+const MAX_EXAMPLES = 10;
+
+/**
+ * One examples/<type>.txt file: examples separated by a line "---"; in a thread example the parts are separated by a
+ * line "+++". Lines starting with "#" are comments. At most 10 are used.
+ */
+export function parseExamples(text: string): Example[] {
+  const body = text.replace(/\r\n?/g, "\n").split("\n").filter((l) => !l.startsWith("#")).join("\n");
+  return body
+    .split(/^---$/m)
+    .map((block) => block.split(/^\+\+\+$/m).map((p) => p.trim()).filter(Boolean))
+    .filter((parts) => parts.length)
+    .slice(0, MAX_EXAMPLES)
+    .map(([text, ...thread]) => ({ text, thread }));
+}
+
+export function buildSetup(texts: { config: string; angles: string; banned: string; examples?: Partial<Record<ContentType, string>> }): ContentSetup {
+  return {
+    config: parseYaml("config/content-types.yaml", texts.config, ContentConfig),
+    angles: parseYaml("config/angles.yaml", texts.angles, Angles),
+    banned: parseYaml("config/banned.yaml", texts.banned, Banned),
+    examples: Object.fromEntries(Object.entries(texts.examples ?? {}).map(([t, s]) => [t, parseExamples(s ?? "")])),
+  };
 }
 
 /** Types that can be picked (weight above 0), in config order. */
-export const activeTypes = () => Object.keys(contentSetup().config.types).filter((t) => contentSetup().config.types[t].weight > 0) as [string, ...string[]];
+export const activeTypes = () => {
+  const { types } = contentSetup().config;
+  return CONTENT_TYPES.filter((t) => (types[t]?.weight ?? 0) > 0) as [ContentType, ...ContentType[]];
+};
 
-// ponytail: read once per process; edit the YAML and restart the server (or the Inngest worker) to apply.
+// ponytail: read once per process; edit the files and restart the server (or the Inngest worker) to apply.
 let cached: ContentSetup | undefined;
 export function contentSetup(): ContentSetup {
   if (cached) return cached;
-  const read = (f: string) => readFileSync(path.join(process.cwd(), "config", f), "utf8");
-  return (cached = buildSetup({ config: read("content-types.yaml"), examples: read("few_shot_examples.yaml"), banned: read("banned.yaml") }));
+  const read = (...p: string[]) => readFileSync(path.join(process.cwd(), ...p), "utf8");
+  const optional = (...p: string[]) => { try { return read(...p); } catch { return ""; } };
+  return (cached = buildSetup({
+    config: read("config", "content-types.yaml"),
+    angles: read("config", "angles.yaml"),
+    banned: read("config", "banned.yaml"),
+    examples: Object.fromEntries(CONTENT_TYPES.map((t) => [t, optional("examples", `${t}.txt`)])),
+  }));
 }

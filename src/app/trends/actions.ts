@@ -25,11 +25,11 @@ export async function setTrendCountry(code: string) {
     where: { id: s.id },
     data: { countryCode: code, videoCountry: VIDEO_COUNTRY_CODES.includes(code) ? code : s.videoCountry },
   });
-  revalidatePath("/trends");
+  revalidatePath("/trends", "layout");
 }
 
 export async function syncTrends() {
   await loadTrendSettings();
   await inngest.send({ name: "trends/run.requested", data: { trigger: "manual" } });
-  revalidatePath("/trends");
+  revalidatePath("/trends", "layout");
 }

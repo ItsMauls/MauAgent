@@ -28,7 +28,16 @@ const items: Item[] = [
     ],
   },
   { href: "/brief", label: "Briefs", icon: "auto_awesome" },
-  { href: "/trends", label: "Trends", icon: "trending_up" },
+  {
+    href: "/trends",
+    label: "Trends",
+    icon: "trending_up",
+    children: [
+      { href: "/trends/tiktok", label: "TikTok", icon: "music_note" },
+      { href: "/trends/x", label: "X", icon: "tag" },
+      { href: "/trends/threads", label: "Threads", icon: "alternate_email" },
+    ],
+  },
   { href: "/analytics", label: "Analytics", icon: "monitoring" },
   { href: "/connections", label: "Connections", icon: "hub" },
 ];

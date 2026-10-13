@@ -19,7 +19,7 @@ import { createScheduleJobs, updatePostJob } from "@/lib/publishPlan";
 import { ownMessages } from "@/lib/voiceSamples";
 import { saveTaskResult } from "@/lib/workflows/agentTask";
 import { getPersona, isAgentRole, personaSystem } from "@/lib/agents/persona";
-import { memoryBlock, selectMemories } from "@/lib/agents/memory";
+import { cleanMemoryText, rememberFromChat, roleMemoryBlock } from "@/lib/agents/memory";
 import { generateStructured } from "@/lib/ai/generate";
 
 function taskDef(slug: string) {
@@ -154,25 +154,40 @@ export async function retryTask(taskId: string) {
 
 const ChatTurns = z.array(z.object({ from: z.enum(["owner", "agent"]), text: z.string().trim().min(1).max(2000) })).min(1).max(30);
 
-/** One chat reply from an agent: its persona, its expertise (role blurb) and the memories it has, through the same capped, logged LLM entry point as every task. */
+/** One chat reply from an agent: its persona, its expertise (role blurb) and the memories it has, through the same capped, logged LLM entry point as every task. Lasting instructions from the owner are saved as procedural memory. */
 export async function chatWithAgent(slug: string, raw: unknown) {
   const role = roleBySlug(z.string().parse(slug));
   if (!role || !isAgentRole(role.agentRole)) throw new Error("This agent cannot chat");
   const turns = ChatTurns.parse(raw);
   if (turns.at(-1)!.from !== "owner") throw new Error("The last message must be yours");
-  const [{ persona }, s, mems] = await Promise.all([
-    getPersona(role.agentRole),
-    getSettings(),
-    db.agentMemory.findMany({ where: { role: role.agentRole, archivedAt: null }, orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }], take: 300 }),
-  ]);
-  const memory = s.memoryEnabled ? memoryBlock(selectMemories(mems, [], s.memoryTokenBudget)) : "";
+  const [{ persona }, memory, s] = await Promise.all([getPersona(role.agentRole), roleMemoryBlock(role.agentRole), getSettings()]);
   const system = `${personaSystem(role.agentRole, persona)}
 
-You are chatting directly with the agency owner. Your expertise: ${role.label}, ${role.blurb} Answer from that expertise and from your experience below; if something is outside it, say so and name the agent who owns it. Reply in the language the owner writes in. Be concise and concrete, and never invent past campaigns or results.${memory}`;
+You are chatting directly with the agency owner. Your expertise: ${role.label}, ${role.blurb} Answer from that expertise and from your experience below; if something is outside it, say so and name the agent who owns it. Reply in the language the owner writes in. Be concise and concrete, and never invent past campaigns or results.
+When the owner tells you how to work from now on (a rule, a preference, a correction), acknowledge that you will apply it and put it in "remember" as one short standalone instruction (max 5, in English, no secrets). Leave "remember" empty for questions and small talk.${memory}`;
   const transcript = turns.map((t) => `${t.from === "owner" ? "Owner" : "You"}: ${t.text}`).join("\n");
   const prompt = `Conversation so far:\n${transcript}\n\nWrite your next reply to the owner's last message.`;
-  const { payload } = await generateStructured(role.agentRole, prompt, z.object({ reply: z.string().min(1).max(4000) }), { system, step: `chat:${role.agentRole}` });
-  return payload.reply;
+  const { payload } = await generateStructured(role.agentRole, prompt, z.object({ reply: z.string().min(1).max(4000), remember: z.array(z.string().trim().min(1).max(400)).max(5) }), { system, step: `chat:${role.agentRole}` });
+  const saved = s.memoryEnabled ? payload.remember : [];
+  if (saved.length) await rememberFromChat(role.agentRole, saved);
+  return { reply: payload.reply, saved };
+}
+
+/** Owner edits to one memory. Edits are redacted like every write; "remove" archives (never recalled again), it does not delete. */
+export async function editMemory(id: string, form: FormData) {
+  const content = cleanMemoryText(z.string().trim().min(1).parse(form.get("content")));
+  await db.agentMemory.update({ where: { id: z.string().min(1).parse(id) }, data: { content } });
+  revalidatePath("/boards", "layout");
+}
+
+export async function pinMemory(id: string, pinned: boolean) {
+  await db.agentMemory.update({ where: { id: z.string().min(1).parse(id) }, data: { pinned } });
+  revalidatePath("/boards", "layout");
+}
+
+export async function removeMemory(id: string) {
+  await db.agentMemory.update({ where: { id: z.string().min(1).parse(id) }, data: { archivedAt: new Date() } });
+  revalidatePath("/boards", "layout");
 }
 
 /** Scrap a task that has not started: the row is deleted, and the worker skips an event whose task is no longer queued. */

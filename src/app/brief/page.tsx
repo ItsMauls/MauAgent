@@ -44,6 +44,7 @@ const ROLE_INFO: Record<AgentRole, { title: string; job: string; icon: string }>
   videographer: { title: "Videographer", job: "Writes generation prompts and renders the 9:16 shots.", icon: "videocam" },
   postProduction: { title: "Post-production", job: "Cuts, paces, subtitles and mixes the final edit.", icon: "movie_edit" },
   accountTeam: { title: "Account Team (QA)", job: "Brand-safety check, captions, hashtags and a self score.", icon: "verified" },
+  socmedSpecialist: { title: "Socmed Specialist", job: "Writes batches of text posts for X and Threads (text-post mode).", icon: "campaign" },
 };
 
 const KIT_ICON = { character: "face", location: "location_on", style: "style" };

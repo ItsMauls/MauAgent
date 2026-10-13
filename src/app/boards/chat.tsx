@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { chatWithAgent } from "./actions";
 
-type Turn = { from: "owner" | "agent"; text: string };
+type Turn = { from: "owner" | "agent"; text: string; saved?: string[] };
 
 /** Chat with one agent. The conversation lives in this component only; the server reads the persona and memory on every message. */
 export function AgentChat({ slug, name, initials }: { slug: string; name: string; initials: string }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([{ from: "agent", text: "Ada apa, Pak?" }]);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [turns, pending]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [turns, pending]);
 
   const send = () => {
     const t = text.trim();
@@ -23,8 +23,8 @@ export function AgentChat({ slug, name, initials }: { slug: string; name: string
     setError(null);
     start(async () => {
       try {
-        const reply = await chatWithAgent(slug, next);
-        setTurns([...next, { from: "agent", text: reply }]);
+        const { reply, saved } = await chatWithAgent(slug, next.map(({ from, text }) => ({ from, text })));
+        setTurns([...next, { from: "agent", text: reply, saved }]);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -34,15 +34,13 @@ export function AgentChat({ slug, name, initials }: { slug: string; name: string
   return (
     <div className="flex h-full min-h-80 flex-col gap-3">
       <div className="quiet-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-1" aria-live="polite">
-        {!turns.length && (
-          <p className="py-10 text-center text-sm text-ink-2">
-            Ask {name} anything within their expertise. Replies use their persona and what they remember from past campaigns.
-          </p>
-        )}
         {turns.map((m, i) => (
-          <div key={i} className={`flex items-end gap-2 ${m.from === "owner" ? "flex-row-reverse" : ""}`}>
-            {m.from === "agent" && <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xs font-bold text-violet-700">{initials}</span>}
-            <p className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm ${m.from === "owner" ? "rounded-br-md bg-brand text-white" : "rounded-bl-md bg-canvas"}`}>{m.text}</p>
+          <div key={i} className={`flex flex-col gap-1 ${m.from === "owner" ? "items-end" : "items-start"}`}>
+            <div className={`flex w-full items-end gap-2 ${m.from === "owner" ? "flex-row-reverse" : ""}`}>
+              {m.from === "agent" && <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xs font-bold text-violet-700">{initials}</span>}
+              <p className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.from === "owner" ? "rounded-br-md bg-brand text-white" : "rounded-bl-md bg-canvas"}`}>{m.text}</p>
+            </div>
+            {!!m.saved?.length && <p className="ml-10 flex max-w-[80%] items-start gap-1 text-xs text-violet-700"><span className="material-symbols-outlined !text-[14px]">neurology</span>Saved to memory: {m.saved.join(" · ")}</p>}
           </div>
         ))}
         {pending && <p className="text-xs text-ink-3">{name} is typing…</p>}

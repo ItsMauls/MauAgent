@@ -1,5 +1,8 @@
 # Banned words and phrases for generated text posts. Case-insensitive, matched as whole words or phrases.
 # reject: the variant is rejected. review: the variant needs a human look before it can be scheduled.
+# openers: a post may not START with any of these (template openers).
+# sensitiveTopics: a batch topic containing one of these is refused before anything is generated, and research
+#   results containing one are dropped.
 
 reject:
   - anjing
@@ -12,6 +15,19 @@ reject:
   - dijamin sembuh
   - 100% aman
   - klik link di bio sekarang juga
+  # clichés
+  - plot twist
+  - "spoiler:"
+  - siapa yang setuju
+  - let that sink in
+  - eh malah
+  # generic tech metaphors
+  - kabel putus
+  - defragment
+  - router lag
+  - cache belum di-clear
+  - loading 99%
+  - baterai 1%
 
 review:
   - tahukah kamu
@@ -19,7 +35,50 @@ review:
   - berikut adalah
   - game changer
   - revolusioner
+  - di era sekarang
+  - tidak bisa dipungkiri
+  - unpopular opinion
+  - yuk jawab di komentar
   - politik
   - pemilu
   - agama
   - sara
+
+openers:
+  - akibatnya
+  - rela gue
+  - keinget
+  - ini gue pikir
+  - gue lihat berita
+  - gue baca berita
+  - ternyata yang paling susah
+  - jadi gini
+  - fun fact
+  - tahukah kamu
+
+sensitiveTopics:
+  - bencana
+  - gempa
+  - banjir
+  - tsunami
+  - kecelakaan
+  - meninggal
+  - kematian
+  - tewas
+  - jenazah
+  - bunuh diri
+  - pembunuhan
+  - kriminal
+  - perampokan
+  - pemerkosaan
+  - narkoba
+  - terorisme
+  - pemilu
+  - pilkada
+  - capres
+  - partai
+  - kampanye politik
+  - sara
+  - agama
+  - etnis
+  - rasis

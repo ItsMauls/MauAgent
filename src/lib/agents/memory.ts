@@ -1,4 +1,5 @@
 // Agent memory (episodic now; lessons/procedural from Stage 3). Pure helpers are unit-tested in memory.test.ts.
+import { createHash } from "node:crypto";
 import type { AgentMemory, MemoryLayer } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AGENT_ROLES, ApprovalPackage, ClientBrief, CreativeBrief, InternalBrief, ProductionPlan, VisualDirection, type AgentRole } from "./schemas";
@@ -30,7 +31,7 @@ export function redact(text: string) {
 const MAX_CONTENT = 600;
 
 export type MemoryInput = {
-  role: AgentRole;
+  role: string;
   layer: MemoryLayer;
   content: string;
   tags: string[];
@@ -41,7 +42,9 @@ export type MemoryInput = {
   idemKey?: string;
 };
 
-export const sanitizeMemory = (m: MemoryInput): MemoryInput => ({
+export const cleanMemoryText = (s: string) => redact(s).slice(0, MAX_CONTENT);
+
+export const sanitizeMemory =(m: MemoryInput): MemoryInput => ({
   ...m,
   content: redact(m.content).slice(0, MAX_CONTENT),
   tags: m.tags.map(redact),
@@ -105,7 +108,21 @@ export function memoryBlock(mems: Recallable[]) {
   return `\n\nYour experience from past campaigns (guidance only; if it conflicts with the client brief, brand kit or budget cap, those win):\n${mems.map(memoryLine).join("\n")}`;
 }
 
-export type MemoryCtx = { runId: string; campaignId: string; brief: ClientBrief };
+/** Memory block for a chat or a non-pipeline role (no campaign run to audit). "" when memory is off or empty. */
+export async function roleMemoryBlock(role: string) {
+  const s = await db.setting.upsert({ where: { id: "default" }, create: {}, update: {} });
+  if (!s.memoryEnabled) return "";
+  const mems = await db.agentMemory.findMany({ where: { role, archivedAt: null }, orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }], take: 300 });
+  return memoryBlock(selectMemories(mems, [], s.memoryTokenBudget));
+}
+
+/** Owner instructions given in chat: procedural memory, idempotent per text so repeating an instruction adds nothing. */
+export const rememberFromChat = (role: string, notes: string[]) =>
+  Promise.all(notes.map((content) =>
+    writeMemory({ role, layer: "procedural", content, tags: ["owner-chat"], confidence: 1, idemKey: `chat:${role}:${createHash("sha1").update(content.trim().toLowerCase()).digest("hex")}` }),
+  ));
+
+export type MemoryCtx ={ runId: string; campaignId: string; brief: ClientBrief };
 
 /** Recall for one agent call and record which memories were used on this run. Returns "" when memory is off. */
 export async function recallMemory(role: AgentRole, ctx: MemoryCtx) {
@@ -180,6 +197,8 @@ function roleSummary(role: AgentRole, a: EpisodeInput): string | null {
       const clips = (p(role) as { clips?: unknown[] } | undefined)?.clips;
       return Array.isArray(clips) ? `Final cut from ${clips.length} clips.` : null;
     }
+    case "socmedSpecialist":
+      return null; // text posts are not campaign artifacts; its memory comes from owner chat
     case "accountTeam": {
       const x = ApprovalPackage.safeParse(p(role));
       if (!x.success) return null;

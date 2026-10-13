@@ -11,7 +11,7 @@ import { generate } from "@/lib/ai/image";
 import { storyboardPdf } from "./storyboardPdf";
 import { uploadBuffer } from "@/lib/s3";
 import { renderCut } from "@/lib/media/renderCut";
-import { ClientBrief, CreativeBrief, InternalBrief, Platform, TextPlatform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
+import { ClientBrief, CreativeBrief, InternalBrief, normalizeType, Platform, TextPlatform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
 import { budgetGate, latestPrice, monthSpent } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
 
@@ -62,7 +62,7 @@ export const TASKS: Record<string, TaskDef> = {
       platforms: z.array(TextPlatform).min(1).meta({ title: "Platforms" }),
       count: z.number().int().min(1).max(20).default(6).meta({ title: "How many posts" }),
       // Empty = the weighted mix from config/content-types.yaml.
-      types: z.array(z.enum(activeTypes())).default([]).meta({ title: "Content types (empty = mix)" }),
+      types: z.array(z.preprocess(normalizeType, z.enum(activeTypes()))).default([]).meta({ title: "Content types (empty = mix)" }),
     }),
     // Each post gets a content type (config/content-types.yaml), 3 variants and automatic checks (src/lib/content).
     // The schedule panel on the result page lays them into day x time slots and pushes them to Buffer.

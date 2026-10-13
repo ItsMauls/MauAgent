@@ -21,7 +21,7 @@ import { Modal } from "./modal";
 import { PayloadView } from "./payload";
 import { PostPreview } from "./post-preview";
 import { TextBrief } from "../brief/text-brief";
-import { fulfilTalent, requestTalent, sendTaskToFlow } from "./actions";
+import { editMemory, fulfilTalent, pinMemory, removeMemory, requestTalent, sendTaskToFlow } from "./actions";
 import { RetryButton, ScrapButton, TaskForm, type Option } from "./task-form";
 
 const product = (b: unknown) => (b as { product?: string } | null)?.product;
@@ -323,7 +323,7 @@ export async function MemoryPanel({ role }: { role: BoardRole }) {
     orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
     take: 30,
   });
-  if (!rows.length) return <Empty icon="neurology" text="No memories yet. Episodes are written when a campaign this agent worked on is approved." />;
+  if (!rows.length) return <Empty icon="neurology" text="No memories yet. Tell this agent how to work in the Chat tab, or approve a campaign it worked on." />;
   return (
     <ul className="space-y-2">
       {rows.map((m) => (
@@ -335,6 +335,17 @@ export async function MemoryPanel({ role }: { role: BoardRole }) {
             <span className="ml-auto text-ink-3">{when(m.updatedAt)}</span>
           </div>
           <p className="whitespace-pre-wrap">{m.content}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-semibold">
+            <form action={pinMemory.bind(null, m.id, !m.pinned)}><button className="text-brand">{m.pinned ? "Unpin" : "Pin"}</button></form>
+            <form action={removeMemory.bind(null, m.id)}><button className="text-red-700">Remove</button></form>
+          </div>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-semibold text-brand">Edit</summary>
+            <form action={editMemory.bind(null, m.id)} className="mt-2 space-y-2">
+              <textarea name="content" required maxLength={600} rows={3} defaultValue={m.content} aria-label="Memory text" className="input" />
+              <button className="btn-soft">Save</button>
+            </form>
+          </details>
         </li>
       ))}
     </ul>
