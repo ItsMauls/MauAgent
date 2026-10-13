@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { contentSetup } from "@/lib/content/config";
 import { ACCEPT, MAX_FILE_BYTES } from "@/lib/content/context";
-import { addContextFiles, analyzeVoiceAction, clearVoiceAction, removeContextFile, saveVoiceAction } from "../boards/actions";
+import { addContextFiles, analyzeVoiceAction, removeContextFile } from "../boards/actions";
+import { VoiceEditor } from "./voice-editor";
 import { AnalyzeButton } from "./analyze-button";
 import { ContextTabs } from "./context-tabs";
 
@@ -131,15 +132,7 @@ function VoicePanel({ writingVoice }: { writingVoice: string | null }) {
           ? "Every batch is written in this style. Edit it freely, or upload newer files to learn it again."
           : "Upload your chat exports or posts and the AI learns how you write. Optional: without it the posts follow the audience."}
       </p>
-      {writingVoice && (
-        <form action={saveVoiceAction} className="space-y-2">
-          <textarea name="voice" defaultValue={writingVoice} rows={7} maxLength={1800} aria-label="Writing voice" className="input quiet-scroll text-xs" />
-          <div className="grid grid-cols-2 gap-2">
-            <button className="btn-soft justify-center"><span className="material-symbols-outlined">save</span>Save</button>
-            <button formAction={clearVoiceAction} formNoValidate className="btn-soft justify-center"><span className="material-symbols-outlined">delete</span>Remove</button>
-          </div>
-        </form>
-      )}
+      {writingVoice && <VoiceEditor voice={writingVoice} />}
       <form action={analyzeVoiceAction} className="space-y-2">
         <input type="file" name="files" multiple required accept=".txt,.md,.js,.json,.csv" aria-label="Chats and posts" className="input text-sm file:mr-3 file:rounded-full file:border-0 file:bg-brand-soft file:px-3 file:py-1 file:text-xs file:font-semibold file:text-brand" />
         <p className="text-[11px] text-ink-3">WhatsApp export (.txt), Telegram export (result.json), X archive (tweets.js), or plain text and Markdown.</p>

@@ -1,5 +1,8 @@
 import { createTextPosts } from "../boards/actions";
+import { trendTopics } from "@/lib/content/trendTopics";
 import { ContentTypes } from "./sources";
+import { SuggestDetails } from "./suggest-details";
+import { TrendBubbles } from "./trend-bubbles";
 
 export const AUDIENCES = [
   "Gen Z (18–24)",
@@ -33,13 +36,17 @@ const TEXT_PLATFORMS = [
 ];
 
 /** The text-post brief: the form that makes the Socmed Specialist write a batch. Shown on /brief?mode=text and in the Publishing "New post" dialog. The writing voice and context files live in the sidebar (sources.tsx). */
-export function TextBrief() {
+export async function TextBrief() {
+  const trends = await trendTopics();
   return (
         <div className="space-y-6">
         <form action={createTextPosts} className="card space-y-6 p-6 sm:p-8">
-          <Field label="Topic: what to post about" hint="Posts are written in the topic's language">
-            <textarea name="topic" required rows={2} maxLength={500} placeholder="e.g. Nice hangout spots in Blok M, Jakarta" className="input" />
-          </Field>
+          <div>
+            <Field label="Topic: what to post about" hint={<SuggestDetails goalOptions={TEXT_GOALS} audienceOptions={AUDIENCES} />}>
+              <textarea name="topic" required rows={2} maxLength={500} placeholder="e.g. Nice hangout spots in Blok M, Jakarta" className="input" />
+            </Field>
+            <TrendBubbles topics={trends} />
+          </div>
           <Field label="Account / brand (optional)" hint="Leave empty for a general account">
             <input name="brand" maxLength={200} placeholder="e.g. @mauai.edu" className="input" />
           </Field>
@@ -85,10 +92,10 @@ export function TextBrief() {
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function Field({ label, hint, children }: { label: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 flex items-center justify-between gap-2">
+      <span className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
         <span className="label mb-0">{label}</span>
         {hint && <span className="text-[11px] text-ink-3">{hint}</span>}
       </span>

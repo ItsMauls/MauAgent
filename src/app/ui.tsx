@@ -291,8 +291,8 @@ export function RestoreButton({ label, action }: { label: string; action: () => 
 
 type AccountSettings = Parameters<typeof updateAccount>[1];
 const PUBLISHERS: Record<string, [string, string][]> = {
-  instagram: [["buffer", "Buffer"], ["instagram_graph", "Instagram Graph API"], ["orshot", "Orshot"]],
-  tiktok: [["buffer", "Buffer"], ["tiktok_inbox", "TikTok inbox (draft)"], ["orshot", "Orshot"]],
+  instagram: [["buffer", "Buffer"], ["instagram_graph", "Instagram Graph API"]],
+  tiktok: [["buffer", "Buffer"], ["tiktok_inbox", "TikTok inbox (draft)"]],
   threads: [["buffer", "Buffer"]],
   twitter: [["buffer", "Buffer"]],
 };

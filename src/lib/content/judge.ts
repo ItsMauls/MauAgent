@@ -17,11 +17,14 @@ export const JudgeVerdicts = z.object({
   })),
 });
 export type JudgeVerdicts = z.infer<typeof JudgeVerdicts>;
-export type JudgeInput = { texts: string[]; persona: Persona; topic: string; context: string; temperature: number };
+export type JudgeInput = { texts: string[]; persona: Persona; voice: string | null; topic: string; context: string; temperature: number };
 
 export function judgePrompt(p: JudgeInput) {
   return `You check Indonesian or English social media posts written for one account before they are published. Be strict.
-Persona the posts must sound like: ${p.persona.nickname}. ${p.persona.communicationStyle}
+${p.voice
+    ? `Writing voice the posts must sound like (the account owner's own style guide):\n${p.voice}
+Judge samePersona on the overall feel: the pronoun pair (gue/lo or aku/kamu), rhythm, attitude. The traits in the guide are tendencies, not a checklist: a post does not need a particle (sih, deh, kok, lah), an English word, a punchline or any other single trait, and forcing them is worse than leaving them out. Mark samePersona false only when the post clearly clashes with the voice (wrong pronouns, formal essay tone, a different attitude). Addressing the owner as "Pak" is not part of it. Citation markers like [1] are not claims; ignore them.`
+    : `Persona the posts must sound like: ${p.persona.nickname}. ${p.persona.communicationStyle}`}
 Topic: ${p.topic}
 
 CONTEXT (the only facts, places, people and brands the posts may state):

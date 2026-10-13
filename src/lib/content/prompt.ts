@@ -15,6 +15,8 @@ export type PromptInput = {
   angles: string[];
   n: number;
   persona: Persona | null;
+  /** The owner's own writing style guide (Setting.writingVoice); null = fall back to the persona's style. */
+  voice: string | null;
   language: "id" | "en" | null;
   /** The owner's uploaded context files, already trimmed to a budget. */
   context: string;
@@ -48,12 +50,17 @@ export function buildPrompt(p: PromptInput): { system: string; prompt: string } 
 
   const system = `# PERAN
 Kamu ${persona.nickname}, satu orang yang menulis post X dan Threads untuk satu akun. Semua post harus terdengar dari orang yang sama: manusia nyata, bukan konten generik.
-Gaya: ${persona.communicationStyle}
+${p.voice
+    ? `# SUARA PEMILIK AKUN (utamakan ini)
+${p.voice}
+Ini cara pemilik akun menulis. Pakai sebagai dasar, lalu sesuaikan dengan konteks tiap post: tipe konten, Audiens, Platform, dan seberapa serius topiknya. Pasangan kata ganti di sini (mis. gue/lo) dipakai di semua post; ganti ke netral hanya bila Audiens profesional. Ciri lain (partikel seperti sih/deh/kok, campuran kata Inggris, punchline) hanyalah kecenderungan: pakai hanya bila memang pas di kalimat itu, dan kosongkan bila memaksakan. Post yang rapi dan natural lebih penting daripada memakai semua ciri. Sapaan ke pemilik akun (mis. "Pak") bukan bagian dari post.`
+    : `Gaya: ${persona.communicationStyle}`}
 Nilai: ${list(persona.values)}. Tidak pernah: ${list(persona.nonNegotiables)}.
 
 # BAHASA
 Tulis dalam ${lang}.
-- Pilih SATU register dari Audiens: anak muda, Gen Z, mahasiswa = "gue/lo"; pekerja, milenial, keluarga, umum = "aku/kamu"; profesional = netral tanpa kata ganti santai. Jangan campur "gue/lo" dengan "aku/kamu" dalam satu post.
+- Jangan menulis penanda sumber seperti [1] di dalam teks; sumber hanya diisi di field sources.
+- Pilih SATU register dari Audiens (kecuali SUARA PEMILIK AKUN sudah menentukan pasangan kata ganti): anak muda, Gen Z, mahasiswa = "gue/lo"; pekerja, milenial, keluarga, umum = "aku/kamu"; profesional = netral tanpa kata ganti santai. Jangan campur "gue/lo" dengan "aku/kamu" dalam satu post.
 - Bahasa sehari-hari yang natural, kalimat pendek, boleh fragmen, boleh huruf kecil semua. Jangan seperti esai atau bahasa tulis formal.
 - Singkatan umum (yg, gak, udah, banget) boleh. Dilarang memalsukan typo dan dilarang mengarang kata: setiap kata harus kata yang benar-benar dipakai orang Indonesia.
 
@@ -72,7 +79,7 @@ Tulis dalam ${lang}.
 
 # FAKTA DAN TEMPAT
 - Tempat spesifik HANYA boleh disebut bila ada di TEMPAT. Selain itu pakai deskripsi umum ("kafe kecil", "warung dekat stasiun"). Jangan mengarang fasilitas, harga, menu, atau jam buka.
-- Jangan mengarang angka, tahun, sumber, testimoni, atau nama orang. Jangan menyebut orang nyata atau brand yang tidak ada di masukan.
+- Jangan mengarang angka, tahun, sumber, testimoni, atau nama orang. Ini juga berlaku untuk detail "pengamatan" yang berbentuk fakta: durasi ("15-30 menit"), jumlah, kondisi tempat ("sepi", "kursi kosong"), kecuali ada di FAKTA, TEMPAT, KONTEKS, atau Topik. Jangan menyebut orang nyata atau brand yang tidak ada di masukan.
 - Jangan menulis "lagi viral" atau "lagi trending" tanpa peristiwa dari BERITA.
 - Jangan menyajikan pengalaman pribadi yang dikarang sebagai kejadian nyata.
 

@@ -35,6 +35,6 @@ Threads are built from `thread[]` on each generated post: part 1 is the post's o
 - Buffer reads the video when the post goes out, so signed URLs must outlive that: scheduled/now posts use 6 h, queue/draft use the S3 maximum of 7 days. A queued post that waits longer than 7 days, or a draft you schedule in Buffer later, can fail to fetch the video.
 - Rate limits are per key (100 requests / 15 min; 250 or 500 / day by plan). Daily posting limits are per channel; `Save as draft` skips them.
 - Buffer rejections show as the job's error text. Video size/duration limits per network are not enforced by MauAgent.
-- Orshot, Instagram Graph and TikTok inbox publishers are not built; the integration list shows them as not active.
+- Instagram Graph and TikTok inbox publishers are not built; the integration list shows them as not active. Orshot is no longer a publisher; Buffer covers all platforms.
 - Text posts carry no media, so the video limits above do not apply to them. The character budget assumes X Free (280); raise `CHAR_LIMIT.twitter` in `src/lib/publish.ts` to 25,000 on a paid X plan.
 - The Threads thread shape was not verified against a live Threads channel (none is connected); it mirrors X's.

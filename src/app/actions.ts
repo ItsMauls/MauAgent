@@ -149,7 +149,7 @@ export async function budgetDecision(campaignId: string, input: BudgetDecisionIn
 }
 
 const AccountInput = z.object({
-  publisher: z.enum(["instagram_graph", "tiktok_inbox", "orshot", "buffer"]),
+  publisher: z.enum(["instagram_graph", "tiktok_inbox", "buffer"]),
   brandKitId: z.string().min(1).nullable(),
   accountType: z.enum(["BUSINESS", "CREATOR", "MEDIA_CREATOR"]).nullable(),
   timezone: z.string().refine((tz) => Intl.supportedValuesOf("timeZone").includes(tz) || tz === "UTC", "Unknown time zone"),

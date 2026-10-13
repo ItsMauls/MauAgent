@@ -381,7 +381,8 @@ This brief adds the Socmed Specialist and Socmed Officer workspaces and a Talent
 - **Timezone:** schedule times are entered in `Setting.timezone` (default stays Asia/Jakarta, not Asia/Bangkok) and converted with `zonedToIso`.
 - **Metrics clock:** T is the moment the poll sees the post as sent, not Buffer's `sentAt`.
 - **Not done:** a manual `saveToDraft` run through the full approve flow (needs the dev servers); covered by unit tests with an injected `fetch` only. Live checks made: read-only channels query.
-- **Stale line fixed:** Instagram Graph / TikTok inbox / Orshot publishers are still not built; Buffer is the only publisher.
+- **Stale line fixed:** Instagram Graph / TikTok inbox publishers are still not built; Buffer is the only publisher.
+- **Orshot dropped as publisher (owner, 14 Oct 2026):** Buffer replaces it for TikTok/Instagram. Removed from the account publisher choices, the settings enum and the integrations list. The `orshot` value stays in the Prisma `PublisherKind` enum (and the account label map) so existing rows still load; drop it with a migration if no row uses it.
 
 ## Buffer Posts scheduler: text and thread posts for X and Threads (12 Oct 2026)
 

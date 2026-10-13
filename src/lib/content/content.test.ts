@@ -10,6 +10,7 @@ import { assertPersona, buildPrompt, type PromptInput } from "./prompt";
 import { cachedSearch, cleanResults, gatherResearch, sourceNoteFor, tavily, type Raw, type Search } from "./research";
 import { pickAngles, pickType, topicEntry } from "./select";
 import { classify, contextPrompt, extractText } from "./context";
+import { parseTrends } from "./trendTopics";
 import { batchProblems, detectLanguage, jaccard, scheduleProblem, sentenceCount, validateVariant, type BatchState, type CheckCtx, type Variant } from "./validate";
 
 const setup = contentSetup();
@@ -129,7 +130,7 @@ test("angles: no repeats in a batch, recent ones avoided while others are left, 
 const promptInput = (over: Partial<PromptInput> = {}): PromptInput => ({
   brief: { topic: "first date di Blok M", objective: "engagement", audience: "Gen Z Jakarta", platforms: ["twitter"] },
   type: "light_humor", typeCfg: cfg.types.light_humor!, examples: [{ text: "contoh asli", thread: [] }], angles: ["bingung bayar", "mati gaya", "nyasar"], n: 3,
-  persona, language: "id", context: "", places: "", facts: [], researchMissing: false, openers: setup.banned.openers, recent: [], laughAllowed: true, avoid: [], ...over,
+  persona, voice: null, language: "id", context: "", places: "", facts: [], researchMissing: false, openers: setup.banned.openers, recent: [], laughAllowed: true, avoid: [], ...over,
 });
 
 test("prompt: system rules, the type block, angles per variant, and no places without research", () => {
@@ -155,6 +156,13 @@ test("prompt: numbered facts for educational, a no-facts fallback when research 
   const failed = buildPrompt(promptInput({ type: "educational", typeCfg: cfg.types.educational!, researchMissing: true })).prompt;
   assert.match(failed, /FAKTA: tidak tersedia\. Jangan menulis angka, harga/);
   assert.match(buildPrompt(promptInput({ places: "- Kafe A: kopi" })).prompt, /TEMPAT \(bahan suasana saja/);
+});
+
+test("prompt: the owner's writing voice replaces the persona style", () => {
+  const withVoice = buildPrompt(promptInput({ voice: "- pakai aku/kamu, sinis ringan" })).system;
+  assert.match(withVoice, /SUARA PEMILIK AKUN[\s\S]*sinis ringan/);
+  assert.doesNotMatch(withVoice, /Gaya: /);
+  assert.match(buildPrompt(promptInput()).system, /Gaya: /);
 });
 
 test("prompt: an empty persona stops with persona_missing", () => {
@@ -370,6 +378,7 @@ const deps = (over: Partial<ContentDeps> = {}): ContentDeps & { calls: PromptInp
     history: async () => ({ recent: [], threadsThisWeek: 0, angles: [], sources: [] }),
     recentTexts: async () => [],
     persona: async () => persona,
+    voice: async () => null,
     search: async () => raw([]),
     rand: seeded(11),
     sleep: async (ms) => void slept.push(ms),
@@ -519,4 +528,17 @@ test("the owner's type picks limit the mix; a single pick lifts the anti-repeat 
   const d = deps({ setup: () => setup });
   const { payload } = await generatePosts({ ...brief, count: 4, types: ["question"] }, {}, d);
   assert.deepEqual(payload.posts.map((p) => p.type), ["question", "question", "question", "question"]);
+});
+
+// ---------- trending topic suggestions ----------
+
+test("trend suggestions: parsed from the feed, sensitive ones dropped, highest volume first, entities unescaped", () => {
+  const item = (title: string, traffic: string, headline: string) =>
+    `<item><title>${title}</title><ht:approx_traffic>${traffic}</ht:approx_traffic><ht:news_item><ht:news_item_title>${headline}</ht:news_item_title></ht:news_item></item>`;
+  const xml = `<rss><channel><title>Daily Search Trends</title>${item("al ittihad", "100+", "Prediksi Al-Ittihad")}${item("gempa garut", "5000+", "Gempa di Garut")}${item("timnas", "2000+", "Timnas menang")}${item("artis x", "1000+", "Artis X meninggal dunia")}${item("kopi &amp; teh", "500+", "Harga kopi naik")}</channel></rss>`;
+  const out = parseTrends(xml, setup.banned.sensitiveTopics);
+  assert.deepEqual(out.map((t) => t.term), ["timnas", "kopi & teh", "al ittihad"]);
+  assert.equal(out[0].headline, "Timnas menang");
+  assert.equal(parseTrends(xml, [], 2).length, 2);
+  assert.deepEqual(parseTrends("not xml", []), []);
 });

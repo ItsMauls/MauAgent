@@ -10,7 +10,7 @@ import { ClientBrief, SocialPosts } from "@/lib/agents/schemas";
 import { contentSetup } from "@/lib/content/config";
 import { classify, describeImage, extractText, MAX_FILES } from "@/lib/content/context";
 import { scheduleProblem } from "@/lib/content/validate";
-import { analyzeVoice } from "@/lib/agents";
+import { analyzeVoice, suggestBriefDetails } from "@/lib/agents";
 import { ROLES, roleBySlug } from "@/lib/boards/roles";
 import { writeFeedback } from "@/lib/boards/feedback";
 import { estimateTask, refIds, taskGate, TASKS } from "@/lib/boards/tasks";
@@ -79,6 +79,28 @@ export async function createTextPosts(form: FormData) {
   redirect(`/boards/roles?role=socmed-specialist&tab=task&task=${id}`);
 }
 
+const BriefHelperInput = z.object({
+  topic: z.string().trim().min(3, "Write the topic first").max(500),
+  brand: z.string().trim().max(200).optional(),
+  goals: z.array(z.string().max(200)).max(20),
+  audiences: z.array(z.string().max(200)).max(20),
+  /** The chip options on the form, so the model can pick the ones that fit. */
+  goalOptions: z.array(z.string().max(200)).max(20),
+  audienceOptions: z.array(z.string().max(200)).max(20),
+});
+
+/** "Fill from topic" in the text brief. Returns the error as data: a thrown message is hidden in production. */
+export async function suggestBriefAction(raw: z.input<typeof BriefHelperInput>) {
+  const input = BriefHelperInput.safeParse(raw);
+  if (!input.success) return { error: input.error.issues[0].message };
+  try {
+    const { objective, audience, goals, audiences } = await suggestBriefDetails(input.data, { step: "brief-helper" });
+    return { objective, audience, goals, audiences };
+  } catch (e) {
+    return { error: `Could not write the details: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}` };
+  }
+}
+
 // ---------- Writing voice: learn how the owner writes from their own chats and posts ----------
 
 const MAX_FILE_BYTES = 10_000_000; // a long WhatsApp export is a few MB
@@ -93,17 +115,19 @@ export async function analyzeVoiceAction(form: FormData) {
   );
   const { payload } = await analyzeVoice(samples);
   // Some models write "␣" where a line break belongs; the guide is meant to be a readable bulleted list.
-  // Others drop the backslash of "\n" and leave a bare "n" before the next bullet.
-  const voice = payload.voice.replace(/␣+/g, "\n").replace(/([.!?)'"])n- /g, "$1\n- ").replace(/\n{3,}/g, "\n\n").trim();
+  // Others drop the backslash of "\n" and leave a bare "n" before the next bullet, or join bullets with spaces.
+  const voice = payload.voice.replace(/␣+/g, "\n").replace(/([.!?)'"])n- /g, "$1\n- ").replace(/ {2,}- /g, "\n- ").replace(/\n{3,}/g, "\n\n").trim();
   await db.setting.upsert({ where: { id: "default" }, create: { writingVoice: voice }, update: { writingVoice: voice } });
   revalidatePath("/brief");
 }
 
-/** The owner edits the style guide by hand. */
-export async function saveVoiceAction(form: FormData) {
-  const voice = z.string().trim().min(1, "The writing voice is empty: remove it instead").max(1800).parse(form.get("voice"));
-  await db.setting.upsert({ where: { id: "default" }, create: { writingVoice: voice }, update: { writingVoice: voice } });
+/** The owner edits the style guide by hand. Returns the error as data, so the editor can show it (and its success). */
+export async function saveVoiceAction(form: FormData): Promise<{ error?: string }> {
+  const voice = z.string().trim().min(1, "The writing voice is empty: remove it instead").max(1800).safeParse(form.get("voice"));
+  if (!voice.success) return { error: voice.error.issues[0].message };
+  await db.setting.upsert({ where: { id: "default" }, create: { writingVoice: voice.data }, update: { writingVoice: voice.data } });
   revalidatePath("/brief");
+  return {};
 }
 
 export async function clearVoiceAction() {

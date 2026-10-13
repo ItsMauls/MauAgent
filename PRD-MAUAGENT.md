@@ -175,7 +175,7 @@ Video Gemini sudah ber-audio, jadi tahap ini menyempurnakan, bukan membuat suara
 ### F11. Publikasi
 - **Instagram:** Graph API untuk Reels. Alur: `POST /{ig-user-id}/media` (`media_type=REELS`, `video_url` publik dari S3 presigned) → polling status container → `POST /media_publish`. Penjadwalan lewat `step.sleepUntil` karena API tidak punya parameter jadwal. Cek kuota lewat `GET /{ig-user-id}/content_publishing_limit` sebelum posting. Spesifikasi video H.264/HEVC + AAC, moov atom di depan.
 - **TikTok:** Content Posting API mode upload ke inbox (draft) atau Direct Post; sebelum audit lolos semua Direct Post otomatis privat (SELF_ONLY), jadi pakai mode inbox atau Orshot Publish. Ajukan audit TikTok sejak Fase 1.
-- Abstraksi `Publisher` (interface) dengan implementasi `InstagramGraphPublisher`, `TikTokInboxPublisher`, `OrshotPublisher`.
+- Abstraksi `Publisher` (interface) dengan implementasi `InstagramGraphPublisher`, `TikTokInboxPublisher`. Orshot tidak dipakai sebagai publisher; publikasi lewat Buffer (14 Okt 2026).
 - Hasil: `PublishResult { platform, postId, permalink, status }`.
 
 ### F12. Trend Scout

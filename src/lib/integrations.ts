@@ -60,7 +60,6 @@ export const INTEGRATIONS: Entry[] = [
   { id: "openrouter", name: "OpenRouter (LLM)", icon: "auto_awesome", href: "/settings/ai", status: checked("openrouter", "AI_API_KEY") },
   { id: "seedance", name: "Seedance (video)", icon: "movie", href: "/settings", status: keyOnly("ARK_API_KEY") },
   { id: "s3", name: "S3 storage", icon: "cloud", href: "/settings", status: checked("s3") },
-  { id: "orshot", name: "Orshot", icon: "send", href: "/accounts", status: notBuilt("Publisher not built yet") },
   { id: "elevenlabs", name: "ElevenLabs", icon: "graphic_eq", href: "/settings", status: notBuilt("Not built yet") },
   { id: "apify", name: "Apify TikTok Trends", icon: "trending_up", href: "/trends/tiktok", status: checked("apify", "APIFY_API_TOKEN") },
   { id: "vidiq", name: "vidIQ", icon: "trending_up", href: "/settings", status: notBuilt("Not built yet") },

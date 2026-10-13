@@ -50,6 +50,8 @@ export type ContentDeps = {
   recentTexts: (days: number) => Promise<string[]>;
   /** The Socmed Specialist persona every post is written as. */
   persona: () => Promise<Persona | null>;
+  /** The owner's writing style guide, or null when none is saved. */
+  voice: () => Promise<string | null>;
   search: Search;
   write: (p: PromptInput, ctx: CallCtx) => Promise<Written>;
   judge: (p: JudgeInput, ctx: CallCtx) => Promise<Written>;
@@ -86,6 +88,7 @@ export const dbDeps: ContentDeps = {
     return rows.map((r) => [r.caption, ...r.thread].join("\n"));
   },
   persona: async () => (await getPersona("socmedSpecialist")).persona,
+  voice: async () => (await db.setting.findUnique({ where: { id: "default" }, select: { writingVoice: true } }))?.writingVoice ?? null,
   search: cachedSearch(tavily()),
   async write(p, ctx) {
     const { system, prompt } = buildPrompt(p);
@@ -107,7 +110,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).sli
  * read as AI on X; swap them for plain punctuation (the validator still rejects an em dash that gets through).
  */
 const lines = (s: string) =>
-  s.replace(/([?.!:])n(?=(?:[A-Da-d][.)]|\d[.)])\s)/g, "$1\n").replace(/\s*—\s*/g, ", ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  s.replace(/\s*\[\d+\]/g, "").replace(/([?.!:])n(?=(?:[A-Da-d][.)]|\d[.)])\s)/g, "$1\n").replace(/\s*—\s*/g, ", ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
 
 /** Layer 2 on top of layer 1: a judge reject wins, a judge review turns approved into needs_review. */
 const merge = (v: Verdict, j: { reject: string[]; review: string[] }): Verdict => ({
@@ -122,9 +125,9 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
   const sensitive = bannedHits(topic, setup.banned.sensitiveTopics);
   if (sensitive.length) throw new Error(`Topic refused as sensitive (${sensitive.join(", ")}): pick another topic`);
 
-  let uploaded: string, history: History, corpus: string[], persona: Persona | null;
+  let uploaded: string, history: History, corpus: string[], persona: Persona | null, voice: string | null;
   try {
-    [uploaded, history, corpus, persona] = await Promise.all([deps.context(), deps.history(), deps.recentTexts(cfg.similarity.lookbackDays), deps.persona()]);
+    [uploaded, history, corpus, persona, voice] = await Promise.all([deps.context(), deps.history(), deps.recentTexts(cfg.similarity.lookbackDays), deps.persona(), deps.voice()]);
   } catch (e) {
     throw new Error(`Could not load your context files or recent posts: ${message(e)}`);
   }
@@ -174,7 +177,7 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
       // After a timeout or HTTP error, ask for a single variant: a smaller reply is faster.
       const n = timedOut ? 1 : cfg.variants;
       const prompt: PromptInput = {
-        brief: input, type, typeCfg, examples: setup.examples[type] ?? [], angles: angles.slice(0, n), n, persona, language,
+        brief: input, type, typeCfg, examples: setup.examples[type] ?? [], angles: angles.slice(0, n), n, persona, voice, language,
         context: uploaded, places: research.places, facts, researchMissing: typeCfg.research !== "none" && !facts.length,
         openers: setup.banned.openers, recent: [...posts.map((p) => p.text).reverse(), ...corpus].slice(0, 10),
         laughAllowed: batch.laughs < batch.laughQuota, avoid,
@@ -214,7 +217,7 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
         let judged: { reject: string[]; review: string[] }[];
         try {
           const out = await deps.judge(
-            { texts: live.map((i) => [variants[i].text, ...variants[i].thread].join("\n")), persona, topic, context: known, temperature: cfg.judge.temperature },
+            { texts: live.map((i) => [variants[i].text, ...variants[i].thread].join("\n")), persona, voice, topic, context: known, temperature: cfg.judge.temperature },
             { ...ctx, idemKey: key(":judge") },
           );
           costUsd += out.costUsd;
