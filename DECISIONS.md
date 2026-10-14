@@ -622,3 +622,56 @@ no Threads channel, so `metadata.threads.thread` and the Threads thread cap are 
   Regenerate rewrites one post inline from the same brief, type and CTA, avoiding the batch's other posts; the monthly
   cap is checked first.
 - **Question hooks**: at most 2 per batch unless the owner picked only the question type.
+
+## Automation campaigns (2026-10-14)
+
+Bulk text-post campaigns for X and Threads (1 to `AUTOMATION_MAX_POSTS`, default 2000), built in phases. The video
+`Campaign`, its pipeline and `status.ts` are untouched.
+
+### Phase 1: data model, planner, form
+- **Separate models**, as the owner asked: `AutomationCampaign` + `CampaignPost` (migration
+  `20261014020000_automation_campaign`), no `kind` column on `Campaign`. Spend links through a nullable
+  `CostEntry.automationCampaignId`, so CostEntry stays the single ledger and `monthSpent` sees automation spend
+  without changes. `PublishJob` gets only the back-relation; `CampaignPost.publishJobId` is the link.
+- **Cross-posting (owner):** one plan slot = one generated text, sent to every selected account. There is one
+  `CampaignPost` row per (slot, account), so each account has its own time, publish job, status and metrics. Text,
+  QC and approval are written to every row of a slot together. `targetPosts` counts texts, so generation and QC are
+  paid once per text. The text is checked against every selected platform, so X's 280 limit binds.
+- **No `artifactId` on `CampaignPost`.** The row holds the text, variants and QC report itself. One Artifact per post
+  (up to 2000) would duplicate that, and nothing reads Artifacts for these posts.
+- **JSON columns** (`goal`, `planConfig`, `reviewPolicy`, `qcConfig`, `generationConfig`) are validated by zod in
+  `src/lib/automation/config.ts`, with defaults: 4 posts per day, active 08-22 owner time, 90-minute minimum gap,
+  20-minute jitter; QC threshold 0.8, 2 regenerations; 3 variants, 10-day horizon, chunks of 8, pilot of 10.
+- **forceReviewTypes default = educational + story.** The brief said "educational and data post types", but the data
+  type no longer exists in the enum. Story is reviewed by `validateVariant` anyway; listing it makes that visible.
+- **Planner** (`src/lib/automation/plan.ts`, pure, seeded mulberry32 stored as `AutomationCampaign.seed`):
+  - Posting days = the range minus quiet weekdays (and weight-0 days). A day holds
+    `min(maxPostsPerDay, floor(window / minGap))` texts. Every account gets every text, so capacity is per day.
+  - Texts per day: proportional to the weekday weight, capped per day (largest remainder), so the spread over the
+    range is even.
+  - Times: k whole-minute segments of the active window. A text sits mid-segment and each account gets its own
+    ± jitter, limited so neighbours keep the minimum gap. This guarantees no two posts of one account in the same
+    minute or closer than the gap. Wall-clock times are converted with `zonedToIso` in `Setting.timezone`.
+  - Type mix: the existing `pickType` walked over the whole plan in time order, with a rolling 7-plan-day thread
+    count, so the anti-repeat rule and weekly thread cap hold across the plan. Earlier batches count only when the plan
+    starts within 7 days. Pillars are round-robin over a shuffled list; angles come from `pickAngles` + `topicEntry`;
+    the CTA comes from `ctaPlan` over the whole plan (moved from `generate.ts` to `select.ts` so the planner and the
+    client form can import it without the DB; `generate.ts` re-exports it).
+  - Scheduling is "best times for the audience" only. Nothing tries to make automation look human or to avoid
+    detection, and every post keeps `aiAssisted`.
+- **Feasibility** is the same pure `capacity()` in the form (live) and in `createAutomationCampaign` (server). A
+  shortfall throws `PlanInfeasible` with the numbers, so the UI cannot be bypassed. The target is derived from a total
+  or a rate (posts per posting day) on the server too.
+- **Creation** writes the campaign and every row in one transaction (`createMany`): 2000 rows in about 0.7 s locally.
+  Status `draft`. The first `pilotSize` slots are flagged `pilot`.
+- **Estimate before the pilot:** `estimateCallUsd` for one writer, one judge and one QC call at each role's model (max
+  output tokens as an upper bound) + 25% for second QC samples and regenerations. It is labelled as an estimate, and
+  shows "unknown" without an AI key. The pilot replaces it with the measured average.
+- **UI:** `/campaigns/automation` (list), `/new` (one-page form with a live check panel), `/[id]` with tabs Overview,
+  Plan, Review, Calendar, Tracking, Settings. Review, Calendar and Tracking say which phase brings them. Sidebar:
+  Campaigns → Automation.
+- **Verified:** 9 planner tests (determinism, slot/row counts for 1/7/300/2000, gap and same-minute, active hours,
+  UTC-midnight crossing, quiet days, weights, shortfall, thread cap, maxConsecutive across the plan). Against the
+  local DB: targets 1, 300, 2000 and a 3/day rate created full plans; an over-capacity goal, a target above the max and
+  an unknown account were refused. Probe rows were removed afterwards. **Not verified in the browser:** the running dev
+  server holds the old Prisma client (the engine DLL rename failed again), so it must be restarted first.

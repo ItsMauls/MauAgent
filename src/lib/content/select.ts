@@ -1,6 +1,16 @@
 // Step 1 of a text-post batch: pick a content type per post, and an angle per variant. Pure.
-import type { ContentType } from "@/lib/agents/schemas";
+import type { ContentType, Cta } from "@/lib/agents/schemas";
 import type { Angles, ContentConfig, TopicAngles } from "./config";
+
+/**
+ * Which posts of a batch carry the CTA: none for "none"; otherwise spread evenly, at most 30% of a batch of 6 or more
+ * (never every post), half of a smaller one, and the only post of a batch of 1.
+ */
+export function ctaPlan(count: number, cta: Cta = "none"): (Cta | null)[] {
+  const n = cta === "none" ? 0 : count === 1 ? 1 : count >= 6 ? Math.max(1, Math.floor(count * 0.3)) : Math.ceil(count / 2);
+  const slots = new Set(Array.from({ length: n }, (_, k) => Math.floor(((k + 0.5) * count) / n)));
+  return Array.from({ length: count }, (_, i) => (slots.has(i) ? cta : null));
+}
 
 /** Thread types count toward the weekly thread cap. */
 export const isThreadType = (cfg: ContentConfig, type: string) => !!cfg.types[type as ContentType]?.thread;

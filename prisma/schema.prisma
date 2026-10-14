@@ -238,31 +238,35 @@ model Decision {
 
 // The single cost ledger: every paid (or quota-limited) call writes one row. Caps and reports sum this table.
 model CostEntry {
-  id              String     @id @default(cuid())
+  id                   String              @id @default(cuid())
   // Null for calls outside a campaign (direct tasks, trend runs, connection tests).
-  campaignId      String?
-  campaign        Campaign?  @relation(fields: [campaignId], references: [id])
-  step            String
-  provider        String
-  model           String
-  agentRole       String?
-  units           Decimal    @db.Decimal(12, 4)
-  unitPrice       Decimal    @db.Decimal(12, 6)
-  usd             Decimal    @db.Decimal(10, 4)
-  tokensIn        Int?
-  tokensOut       Int?
-  tokensReasoning Int?
+  campaignId           String?
+  campaign             Campaign?           @relation(fields: [campaignId], references: [id])
+  // Set for calls made for an automation campaign (text posts at scale).
+  automationCampaignId String?
+  automationCampaign   AutomationCampaign? @relation(fields: [automationCampaignId], references: [id])
+  step                 String
+  provider             String
+  model                String
+  agentRole            String?
+  units                Decimal             @db.Decimal(12, 4)
+  unitPrice            Decimal             @db.Decimal(12, 6)
+  usd                  Decimal             @db.Decimal(10, 4)
+  tokensIn             Int?
+  tokensOut            Int?
+  tokensReasoning      Int?
   // primary | fallback (which AI key served the call; never the key itself).
-  keyLabel        String?
+  keyLabel             String?
   // Validated LLM result: a retried step with the same idemKey prefix reuses it instead of calling again.
-  output          Json?
-  attempt         Int        @default(1)
-  reason          CostReason @default(initial)
+  output               Json?
+  attempt              Int                 @default(1)
+  reason               CostReason          @default(initial)
   // campaignId:step:attempt — prevents double charges on retry.
-  idemKey         String     @unique
-  createdAt       DateTime   @default(now())
+  idemKey              String              @unique
+  createdAt            DateTime            @default(now())
 
   @@index([provider, createdAt])
+  @@index([automationCampaignId, createdAt])
 }
 
 // Singleton (id = "default"): LLM settings from /settings/ai. Keys stay in env; empty defaultModel = env AI_MODEL.
@@ -446,14 +450,14 @@ enum PublishStatus {
 // Connected social account (many per platform and per brand). Tokens are AES-GCM encrypted (src/lib/crypto.ts)
 // and never selected for the client: pages use ACCOUNT_PUBLIC_SELECT (src/lib/accounts.ts).
 model SocialAccount {
-  id                   String        @id @default(cuid())
+  id                   String         @id @default(cuid())
   platform             Platform
   platformUserId       String
   handle               String
   accountType          String?
   brandKitId           String?
-  brandKit             BrandKit?     @relation(fields: [brandKitId], references: [id])
-  timezone             String        @default("Asia/Jakarta")
+  brandKit             BrandKit?      @relation(fields: [brandKitId], references: [id])
+  timezone             String         @default("Asia/Jakarta")
   accessTokenEnc       String
   refreshTokenEnc      String?
   tokenExpiresAt       DateTime?
@@ -463,18 +467,19 @@ model SocialAccount {
   tiktokAuditStatus    String?
   publisher            PublisherKind
   // For Buffer channels `active` is "enabled for publishing"; status mirrors the channel's state in Buffer.
-  active               Boolean       @default(true)
-  status               AccountStatus @default(connected)
-  isDefaultForPlatform Boolean       @default(false)
+  active               Boolean        @default(true)
+  status               AccountStatus  @default(connected)
+  isDefaultForPlatform Boolean        @default(false)
   lastSyncedAt         DateTime?
   avatarUrl            String?
   lastError            String?
   quotaUsage           Int?
   quotaTotal           Int?
   quotaCheckedAt       DateTime?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
   publishJobs          PublishJob[]
+  campaignPosts        CampaignPost[]
 
   @@unique([platform, platformUserId])
 }
@@ -508,6 +513,8 @@ model PublishJob {
   sourceNote       String?
   sourceConfidence String?
   metricSnapshots  MetricSnapshot[]
+  // The automation campaign post this job publishes (idemKey auto:<campaignPostId>).
+  campaignPost     CampaignPost?
   // campaignId:socialAccountId:attempt (campaign video) | task:agentTaskId:slot:socialAccountId (text post).
   // A retry makes a new attempt only when the last one never got a postId.
   idemKey          String           @unique
@@ -626,4 +633,115 @@ model ContentFile {
   // Text files: the extracted text (capped). Images: what the AI saw in the picture.
   content   String
   createdAt DateTime        @default(now())
+}
+
+// ---------- Automation campaigns: text posts (X, Threads) at scale, separate from the video Campaign ----------
+
+enum AutomationStatus {
+  draft
+  piloting
+  awaiting_scale
+  running
+  paused
+  completed
+  cancelled
+}
+
+enum AutomationPause {
+  manual
+  budget
+  kill_switch
+  quota
+}
+
+enum CampaignPostStatus {
+  planned
+  generating
+  qc
+  needs_review
+  approved
+  scheduled
+  published
+  failed
+  rejected
+  skipped
+  cancelled
+}
+
+enum ApprovalSource {
+  human
+  qc_auto
+}
+
+// JSON columns are validated by the zod schemas in src/lib/automation/config.ts.
+model AutomationCampaign {
+  id               String           @id @default(cuid())
+  name             String
+  status           AutomationStatus @default(draft)
+  pauseReason      AutomationPause?
+  // targetPosts, accountIds, startDate, endDate, pillars, audience, language, cta, kpiTarget
+  goal             Json
+  budgetCapUsd     Decimal          @db.Decimal(10, 2)
+  warnAtPct        Int              @default(80)
+  planConfig       Json
+  reviewPolicy     Json
+  qcConfig         Json
+  generationConfig Json
+  // Planner RNG seed: the same goal, config and seed give the same plan.
+  seed             Int
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  posts            CampaignPost[]
+  costs            CostEntry[]
+
+  @@index([status])
+}
+
+// One row per (slot, account). A slot is one generated text cross-posted to every selected account, so the rows of a
+// slot share text, QC and approval; each row has its own time, publish job and status.
+model CampaignPost {
+  id                     String             @id @default(cuid())
+  automationCampaignId   String
+  automationCampaign     AutomationCampaign @relation(fields: [automationCampaignId], references: [id])
+  slot                   Int
+  platform               Platform
+  socialAccountId        String
+  socialAccount          SocialAccount      @relation(fields: [socialAccountId], references: [id])
+  contentType            String
+  // One angle per variant.
+  angles                 String[]           @default([])
+  pillar                 String?
+  topicSeed              String
+  cta                    String?
+  scheduledAt            DateTime
+  // "YYYY-MM-DD HH:mm" in the owner's time zone at planning time.
+  localTime              String
+  pilot                  Boolean            @default(false)
+  status                 CampaignPostStatus @default(planned)
+  text                   String?
+  thread                 String[]           @default([])
+  variants               Json?
+  sourceNote             String?
+  qcReport               Json?
+  confidence             Float?
+  approvalSource         ApprovalSource?
+  approvalPolicySnapshot Json?
+  approvedAt             DateTime?
+  // approved | rejected | edited: the owner's decision on a post QC sent to review.
+  humanDecision          String?
+  // Whether QC's verdict matched the owner's decision (threshold calibration).
+  qcAgreed               Boolean?
+  publishJobId           String?            @unique
+  publishJob             PublishJob?        @relation(fields: [publishJobId], references: [id])
+  retryCount             Int                @default(0)
+  failureReason          String?
+  // Rolled up from CostEntry (idemKey prefix of the slot); the same value on every row of a slot.
+  costUsd                Decimal            @default(0) @db.Decimal(10, 4)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@unique([automationCampaignId, slot, socialAccountId])
+  @@index([automationCampaignId, status])
+  @@index([automationCampaignId, scheduledAt])
+  @@index([socialAccountId, scheduledAt])
 }

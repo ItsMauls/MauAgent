@@ -38,6 +38,7 @@ const items: Item[] = [
     icon: "campaign",
     children: [
       { href: "/approval", label: "Approval", icon: "fact_check" },
+      { href: "/campaigns/automation", label: "Automation", icon: "autorenew" },
       ...feat("campaigns"),
     ],
   },

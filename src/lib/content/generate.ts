@@ -13,7 +13,7 @@ import { loadContext } from "./context";
 import { applyJudge, judgePrompt, JudgeVerdicts, type JudgeInput } from "./judge";
 import { assertPersona, buildPrompt, type PromptInput } from "./prompt";
 import { cachedSearch, gatherResearch, NO_RESEARCH, sourceNoteFor, tavily, type Search } from "./research";
-import { isThreadType, pickAngles, pickType, topicEntry } from "./select";
+import { ctaPlan, isThreadType, pickAngles, pickType, topicEntry } from "./select";
 import { addToBatch, bannedHits, batchProblems, briefLanguage, fitToLimit, questionHook, validateVariant, type BatchState, type Verdict } from "./validate";
 
 /**
@@ -38,15 +38,7 @@ export function onlyTypes(cfg: ContentConfig, types: string[], count: number, le
   return { ...cfg, types: types2, maxConsecutive: picked.length === 1 ? Number.MAX_SAFE_INTEGER : cfg.maxConsecutive };
 }
 
-/**
- * Which posts of a batch carry the CTA: none for "none"; otherwise spread evenly, at most 30% of a batch of 6 or more
- * (never every post), half of a smaller one, and the only post of a batch of 1.
- */
-export function ctaPlan(count: number, cta: Cta = "none"): (Cta | null)[] {
-  const n = cta === "none" ? 0 : count === 1 ? 1 : count >= 6 ? Math.max(1, Math.floor(count * 0.3)) : Math.ceil(count / 2);
-  const slots = new Set(Array.from({ length: n }, (_, k) => Math.floor(((k + 0.5) * count) / n)));
-  return Array.from({ length: count }, (_, i) => (slots.has(i) ? cta : null));
-}
+export { ctaPlan };
 type Written = { payload: unknown; costUsd: number };
 
 export type History = {

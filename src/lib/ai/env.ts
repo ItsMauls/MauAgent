@@ -26,6 +26,11 @@ const BufferEnv = z.object({
   BUFFER_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).catch(2),
 });
 
+// Upper bound for an automation campaign's target post count (the form and the server both enforce it).
+const AutomationEnv = z.object({
+  AUTOMATION_MAX_POSTS: z.coerce.number().int().min(1).catch(2000),
+});
+
 /** Zod error → one line naming the missing variables, never their values. */
 function parse<T extends z.ZodTypeAny>(schema: T, env: Record<string, string | undefined>): z.infer<T> {
   const r = schema.safeParse(env);
@@ -36,6 +41,7 @@ function parse<T extends z.ZodTypeAny>(schema: T, env: Record<string, string | u
 export const aiEnv = (env: Record<string, string | undefined> = process.env) => parse(AiEnv, env);
 export const apifyEnv = (env: Record<string, string | undefined> = process.env) => parse(ApifyEnv, env);
 export const bufferEnv = (env: Record<string, string | undefined> = process.env) => parse(BufferEnv, env);
+export const automationEnv = (env: Record<string, string | undefined> = process.env) => parse(AutomationEnv, env);
 
 /** Booleans and non-secret values only: safe to render. */
 export const keyStatus = (env: Record<string, string | undefined> = process.env) => ({
