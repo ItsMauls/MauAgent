@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { createCampaign, getSettings } from "../actions";
 import { AUDIENCES, Chips, Field, TextBrief } from "./text-brief";
 import { ContentContext } from "./sources";
+import { RoleAvatar } from "../boards/cards";
 import { getPersona } from "@/lib/agents/persona";
 import { AGENT_ROLES, type AgentRole } from "@/lib/agents/schemas";
 
@@ -250,9 +251,7 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
                 const p = personas[i].persona;
                 return (
                   <li key={role} className="relative flex gap-3">
-                    <span className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand ring-4 ring-white">
-                      <span className="material-symbols-outlined !text-[18px]">{r.icon}</span>
-                    </span>
+                    <RoleAvatar role={role} className="z-10 h-8 w-8 shrink-0 ring-4 ring-white" />
                     <details className="group min-w-0 flex-1">
                       <summary className="cursor-pointer list-none">
                         <span className="flex flex-wrap items-center gap-1.5 text-sm font-bold">

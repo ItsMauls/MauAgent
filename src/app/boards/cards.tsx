@@ -17,6 +17,12 @@ export const STATE_PILL: Record<AgentState, [string, string]> = {
 
 export const initials = (s: string) => s.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
+/** Agent photo on Cloudinary (mauagent/agents/<agentRole>, already cropped to a full circle). */
+export function RoleAvatar({ role, className = "" }: { role: string; className?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload/mauagent/agents/${role}.webp`} alt="" className={`rounded-full object-cover ${className}`} />;
+}
+
 export function CardSkeleton({ className = "" }: { className?: string }) {
   return (
     <div aria-busy="true" aria-label="Loading" className={`card animate-pulse space-y-3 p-6 ${className}`}>

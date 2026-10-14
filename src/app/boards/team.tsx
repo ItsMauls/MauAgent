@@ -8,7 +8,7 @@ import { agentExperience, revisedRole } from "@/lib/agents/memory";
 import { CreativeBrief } from "@/lib/agents/schemas";
 import { formatDuration } from "@/lib/status";
 import { StatusPill } from "../pills";
-import { CardError, initials, load, STATE_PILL } from "./cards";
+import { CardError, load, RoleAvatar, STATE_PILL } from "./cards";
 import { FeedbackForm } from "./feedback";
 import { CircleSelect, SessionSlider } from "./modal";
 
@@ -83,7 +83,7 @@ async function TeamCircles() {
             label: name,
             circle: (
               <span key={role.slug} className={`flex h-16 w-16 items-center justify-center rounded-full bg-agent-soft text-base font-bold text-violet-700 ring-4 transition group-aria-pressed:ring-brand ${RING[work.state]}`}>
-                {initials(name)}
+                <RoleAvatar role={role.agentRole} className="h-full w-full" />
                 <span className="sr-only">, {label}</span>
               </span>
             ),
@@ -262,7 +262,7 @@ function SessionSummary({ run, names, isLive }: { run: RunRow; names: Record<str
                 <li key={role}>
                   <span tabIndex={0} className="group relative block outline-none" aria-label={`${names[role] ?? role}, ${roleByAgent(role)?.label ?? role}${role === speaking ? ", speaking" : ""}`}>
                     <span className="flex h-10 w-10 items-center justify-center rounded-full bg-agent-soft text-xs font-bold text-violet-700 ring-2 ring-white group-focus-visible:ring-brand">
-                      {initials(names[role] ?? role)}
+                      <RoleAvatar role={role} className="h-full w-full" />
                     </span>
                     {role === speaking && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-ok" />}
                     <span role="tooltip" className="pointer-events-none absolute -top-9 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white group-hover:block group-focus-visible:block">

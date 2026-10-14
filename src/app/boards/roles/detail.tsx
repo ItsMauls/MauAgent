@@ -11,7 +11,7 @@ import { Empty } from "../../campaigns/[id]/shots";
 import { CreatorLibrary } from "../library";
 import { ArtifactsPanel, ExecutionQueue, MemoryPanel, QuickTask, ReadyTalent, Schedule, TalentRequests } from "../workspace";
 import { TASKS } from "@/lib/boards/tasks";
-import { initials, STATE_PILL } from "../cards";
+import { initials, RoleAvatar, STATE_PILL } from "../cards";
 import { ScrapButton } from "../task-form";
 import { AgentChat } from "../chat";
 import type { WorkColumn, WorkItem } from "@/lib/boards/status";
@@ -104,7 +104,7 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <header className="card flex shrink-0 flex-wrap items-center gap-5 p-6">
-        <span aria-hidden className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xl font-bold text-violet-700">{initials(name)}</span>
+        <RoleAvatar role={role.agentRole} className="h-16 w-16 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">{name}</h1>

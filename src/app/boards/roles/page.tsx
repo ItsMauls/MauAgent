@@ -2,7 +2,7 @@ import Link from "next/link";
 import { GROUPS, ROLES, roleBySlug, type BoardRole } from "@/lib/boards/roles";
 import { agentNames, boardSnapshot } from "@/lib/boards/snapshot";
 import { roleWork } from "@/lib/boards/status";
-import { initials, STATE_PILL } from "../cards";
+import { RoleAvatar, STATE_PILL } from "../cards";
 import { RouteDialog } from "../modal";
 import { RoleDetail } from "./detail";
 
@@ -15,8 +15,8 @@ function Card({ role, info }: { role: BoardRole; info: Info }) {
   const name = info.names[role.agentRole] ?? role.label;
   const [stateLabel, stateCls] = STATE_PILL[roleWork(role.agentRole, info.snap).state];
   return (
-    <Link href={`/boards/roles?role=${role.slug}`} scroll={false} className={`card flex h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft ${dim ? "opacity-40" : ""}`}>
-      <span aria-hidden className="flex h-14 w-14 items-center justify-center rounded-full bg-agent-soft text-lg font-bold text-violet-700">{initials(name)}</span>
+    <Link href={`/boards/roles?role=${role.slug}`} scroll={false} className={`card flex min-h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft ${dim ? "opacity-40" : ""}`}>
+      <RoleAvatar role={role.agentRole} className="h-14 w-14" />
       <span className="w-full truncate font-bold">{name}</span>
       <span className="w-full truncate text-xs text-ink-2">
         <span className="material-symbols-outlined !text-[14px] align-[-2px]">{role.icon}</span> {role.label}
