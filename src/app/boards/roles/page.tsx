@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ROLES, roleBySlug, type BoardRole } from "@/lib/boards/roles";
+import { GROUPS, ROLES, roleBySlug, type BoardRole } from "@/lib/boards/roles";
 import { agentNames, boardSnapshot } from "@/lib/boards/snapshot";
 import { roleWork } from "@/lib/boards/status";
 import { initials, STATE_PILL } from "../cards";
@@ -8,13 +8,14 @@ import { RoleDetail } from "./detail";
 
 export const dynamic = "force-dynamic";
 
-type Info = { names: Record<string, string>; snap: Awaited<ReturnType<typeof boardSnapshot>> };
+type Info = { names: Record<string, string>; snap: Awaited<ReturnType<typeof boardSnapshot>>; group?: string };
 
 function Card({ role, info }: { role: BoardRole; info: Info }) {
+  const dim = info.group && role.group !== info.group;
   const name = info.names[role.agentRole] ?? role.label;
   const [stateLabel, stateCls] = STATE_PILL[roleWork(role.agentRole, info.snap).state];
   return (
-    <Link href={`/boards/roles?role=${role.slug}`} scroll={false} className="card flex h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft">
+    <Link href={`/boards/roles?role=${role.slug}`} scroll={false} className={`card flex h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft ${dim ? "opacity-40" : ""}`}>
       <span aria-hidden className="flex h-14 w-14 items-center justify-center rounded-full bg-agent-soft text-lg font-bold text-violet-700">{initials(name)}</span>
       <span className="w-full truncate font-bold">{name}</span>
       <span className="w-full truncate text-xs text-ink-2">
@@ -105,10 +106,10 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
     <div className="space-y-6 pt-4">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Agent Roles</h1>
-        <p className="text-sm text-ink-2">The agents in flow order. Click one for its tasks, execution queue and memory.</p>
+        <p className="text-sm text-ink-2">The agents in flow order; pick a purpose in the menu to highlight its agents. Click one for its tasks, execution queue and memory.</p>
       </header>
       <div>
-        <Rows info={{ names, snap }} />
+        <Rows info={{ names, snap, group: GROUPS.find((g) => g.slug === sp.group)?.slug }} />
       </div>
       {open && (
         <RouteDialog key={open.slug} title={names[open.agentRole] ?? open.label} closeHref="/boards/roles">
