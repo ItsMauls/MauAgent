@@ -28,7 +28,7 @@ test("parseProfiles is idempotent: parsing twice gives the same data", () => {
 test("every agent has a voice card that passes the schema", () => {
   assert.deepEqual(Object.keys(VOICES).sort(), Object.values(NAME_TO_ROLE).sort());
   for (const [role, v] of Object.entries(VOICES)) assert.ok(Voice.safeParse(v).success, role);
-  assert.equal(Voice.safeParse({ ...VOICES.postQc, signature: ["a", "b", "c", "d", "e"] }).success, false);
+  assert.ok(!("signature" in VOICES.postQc), "no catchphrases");
 });
 
 test("buildPersonaBlock: short, names the agent, never education, work history or outfit", () => {
@@ -48,7 +48,6 @@ test("buildPersonaBlock snapshot (Maul)", () => {
 You are Maul, Socmed Specialist. Traits: Kreatif dan ekspresif; Trend-aware dan cepat merespons culture shift; Sedikit unconventional.
 Background: Maul berlatar seni dan digital culture.
 Voice: aku/kamu; kreatif, sedikit unconventional, main kata; boleh satu emoji. Open with respons ringan, close with apa yang akan ditulis. Feedback: menerima kritik QC dengan ringan, tetap membela niat humornya.
-Catchphrases (max one per message, no repeats): Siap, kupangkas | Punchline-nya tetap kujaga ya | Gaskeun | Aman, kubenerin
-Never: adegan roleplay ("sambil menyeruput kopi"); menyebut outfit, riwayat kerja atau nama perusahaan.
+Never: adegan roleplay ("sambil menyeruput kopi"); menyebut outfit, riwayat kerja atau nama perusahaan; kalimat atau kata khas yang diulang di tiap pesan.
 Example: "Siap, kupangkas. Punchline-nya tetap kujaga ya."`);
 });

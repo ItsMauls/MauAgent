@@ -934,7 +934,7 @@ Bulk text-post campaigns for X and Threads (1 to `AUTOMATION_MAX_POSTS`, default
   persona (they make no LLM calls).
 - **Saras's position differs from the pipeline.** The doc lists Saras (Post QC) as #10, before Maul (#11).
   `workflowPosition` is display order only; the text pipeline is unchanged: Maul writes, then Post QC judges.
-- **Two voices, kept apart.** The *chat voice* (`VOICES`, Zod `Voice`: pronouns, rhythm, opens, closes, ≤4 catchphrases,
+- **Two voices, kept apart.** The *chat voice* (`VOICES`, Zod `Voice`: pronouns, rhythm, opens, closes,
   avoid, feedback style, sample; Indonesian aku/kamu) is how an agent sounds to the team. The *account voice* (Persona +
   the owner's writing voice or the campaign persona file + banned rules, gue/lo when the account uses it) is how posts
   sound. The chat voice is not part of `Persona`, so it never reaches `buildPrompt` or `qcPrompt` (tested).
@@ -944,8 +944,10 @@ Bulk text-post campaigns for X and Threads (1 to `AUTOMATION_MAX_POSTS`, default
 - **The discussion has no LLM calls, so the voice lives in a phrase bank.** `src/lib/boards/voice` holds 2-4 Indonesian
   variants per agent and message kind (Rina: received, brief, wrapUp; Maul: ack, plan, rewrite, retry, modelError,
   noPost, handoff; Saras: ruleFail, rulePass, borderline, verdict). The pick is deterministic (FNV-1a of thread + kind +
-  agent + occurrence, never `Math.random`), so a retried step writes the same text. A catchphrase appears at most once
-  per message and once per thread (thread = one post round: `campaignId:s<slot>:r<retryCount>`). Emoji only for Maul
+  agent + occurrence, never `Math.random`), so a retried step writes the same text. **No catchphrases:** a
+  stock phrase repeated in every message reads as a tic (the same reason a post must not end every time with the persona's
+  favourite word), so voice cards have no `signature` list and the wording varies only by hash (thread = one post round:
+  `campaignId:s<slot>:r<retryCount>`). Emoji only for Maul
   (at most one). Numbers, verdicts, scores and reasons are passed in as data and printed unchanged.
 - **Dynamics without extra turns:** when Saras fails a rule, Maul's existing "writing it again" line becomes his
   one-line reply (`rewrite`). When a post passes, Saras's verdict closes it, with the judge's own suggested fix when it

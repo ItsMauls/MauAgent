@@ -168,7 +168,7 @@ test("prompt: the owner's writing voice replaces the persona style", () => {
 });
 
 test("prompt: the team-chat character never reaches the post writer or the QC judge (only the account's voice does)", () => {
-  const chat = [buildPersonaBlock("socmedSpecialist"), VOICES.socmedSpecialist.sample, ...VOICES.socmedSpecialist.signature, "CHAT CHARACTER"];
+  const chat = [buildPersonaBlock("socmedSpecialist"), VOICES.socmedSpecialist.sample, "CHAT CHARACTER"];
   const { system, prompt } = buildPrompt(promptInput());
   const qc = qcPrompt({ text: "x", thread: [], type: "light_humor", typeLabel: "Light humor", topic: "t", audience: "a", persona, voice: null, context: "", sourceNote: null });
   for (const s of chat) for (const p of [system, prompt, qc]) assert.ok(!p.includes(s), `leaked: ${s.slice(0, 40)}`);

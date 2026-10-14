@@ -1,39 +1,38 @@
 // The voiced lines of the team discussion (Indonesian, aku/kamu): 2-4 variants per agent and message kind, so Rina,
 // Maul and Saras sound like themselves. Every number, verdict and reason comes in as data and is printed unchanged;
 // only the wording around it varies. The pick is deterministic (hash of thread + kind + agent + occurrence), so a
-// retried step writes the same text, and a catchphrase (VOICES[].signature) appears at most once per thread. The
+// retried step writes the same text. There are no catchphrases: a stock phrase repeated across posts reads as a tic. The
 // neutral "Rule and quality checks" lines are not here: they have no voice. Tested in voice.test.ts.
-import { VOICES } from "@/lib/agents/profiles";
 
 /** One conversation thread (a post, or a campaign-level exchange). Create one per thread and pass it to every line. */
-export type Thread = { key: string; used: Set<string>; count: Map<string, number> };
-export const thread = (key: string): Thread => ({ key, used: new Set(), count: new Map() });
+export type Thread = { key: string; count: Map<string, number> };
+export const thread = (key: string): Thread => ({ key, count: new Map() });
 
 type Line<D> = ((d: D) => string)[];
 const retryOrYou = (last: boolean, retry: string, you: string) => (last ? you : retry);
 
 const RINA = {
   received: [
-    (d) => `Oke, aku rangkum dulu ya: ${d.posts} post untuk ${d.audience}, pilar: ${d.pillars}. Brief detail untuk tim kususun sekarang.`,
+    (d) => `Perintah masuk: ${d.posts} post untuk ${d.audience}, pilar: ${d.pillars}. Brief detail untuk tim kususun sekarang.`,
     (d) => `Perintahnya sudah masuk: ${d.posts} post untuk ${d.audience}, pilar: ${d.pillars}. Aku susun brief detailnya dulu.`,
-    (d) => `Noted. ${d.posts} post untuk ${d.audience}, pilar: ${d.pillars}. Brief untuk tim kusiapkan sekarang.`,
+    (d) => `Perintah sudah kuterima. ${d.posts} post untuk ${d.audience}, pilar: ${d.pillars}. Brief untuk tim kusiapkan sekarang.`,
   ] as Line<{ posts: number; audience: string; pillars: string }>,
   brief: [
     (d) => `Brief-nya siap.\n${d.body}\nMaul, silakan mulai ya.`,
-    (d) => `Biar rapi, ini ringkasan brief-nya.\n${d.body}\nLangkah berikutnya: Maul menulis post pilot.`,
+    (d) => `Ini ringkasan brief-nya.\n${d.body}\nLangkah berikutnya: Maul menulis post pilot.`,
     (d) => `Brief sudah kususun.\n${d.body}\nAku serahkan ke Maul untuk mulai menulis.`,
   ] as Line<{ body: string }>,
   wrapUp: [
     (d) => `Pilot selesai: ${d.written} post ditulis, ${d.review} menunggu review kamu${d.failed ? `, ${d.failed} gagal ditulis` : ""}. Langkah berikutnya: cek yang menunggu, lalu tekan Scale up kalau sudah oke.`,
-    (d) => `Oke, aku rangkum dulu ya. Pilot beres, ${d.written} post ditulis dan ${d.review} menunggu review kamu${d.failed ? `, ${d.failed} gagal ditulis` : ""}. Setelah kamu cek, tekan Scale up untuk lanjut.`,
-    (d) => `Noted, pilot selesai. ${d.written} post ditulis, ${d.review} menunggu review kamu${d.failed ? `, ${d.failed} gagal ditulis` : ""}. Berikutnya: review dulu, lalu Scale up.`,
+    (d) => `Pilot beres, ${d.written} post ditulis dan ${d.review} menunggu review kamu${d.failed ? `, ${d.failed} gagal ditulis` : ""}. Setelah kamu cek, tekan Scale up untuk lanjut.`,
+    (d) => `Pilot selesai. ${d.written} post ditulis, ${d.review} menunggu review kamu${d.failed ? `, ${d.failed} gagal ditulis` : ""}. Berikutnya: review dulu, lalu Scale up.`,
   ] as Line<{ written: number; review: number; failed: number }>,
 };
 
 const MAUL = {
   ack: [
     () => "Brief diterima. Post pilot kutulis pakai suara akunnya, lalu satu per satu kuoper ke Saras.",
-    () => "Gaskeun. Post pilot kutulis dari brief ini dengan suara akunnya, nanti Saras yang cek.",
+    () => "Mulai dari sini. Post pilot kutulis dari brief ini dengan suara akunnya, nanti Saras yang cek.",
     () => "Siap, brief-nya jelas. Kutulis post pilotnya, tiap post langsung ke Post QC.",
   ] as Line<void>,
   plan: [
@@ -43,16 +42,16 @@ const MAUL = {
   ] as Line<{ n: number; type: string; variants: number; angles: string }>,
   // Instead of `plan` when Post QC sent the post back: Maul's one-line answer, then he rewrites.
   rewrite: [
-    (d) => `Siap, kupangkas. Post ${d.n} kutulis ulang tanpa: ${d.avoid}.`,
-    (d) => `Aman, kubenerin. Post ${d.n} kutulis ulang, kuhindari: ${d.avoid}.`,
-    (d) => `Post ${d.n} kutulis ulang tanpa ${d.avoid}. Punchline-nya tetap kujaga ya.`,
+    (d) => `Siap. Post ${d.n} kutulis ulang tanpa: ${d.avoid}.`,
+    (d) => `Kubenerin post ${d.n}, kuhindari: ${d.avoid}.`,
+    (d) => `Post ${d.n} kutulis ulang, ${d.avoid} kubuang.`,
     (d) => `Oke, post ${d.n} kutulis ulang, kuhindari: ${d.avoid}.`,
   ] as Line<{ n: number; avoid: string }>,
   // A rewrite inside one write (every variant failed the checks or the call failed).
   retry: [
-    (d) => `Siap, kupangkas. Percobaan ${d.attempt}/${d.max}${d.avoid ? `, kuhindari: ${d.avoid}` : ""}.`,
-    (d) => `Aman, kubenerin. Percobaan ${d.attempt}/${d.max}${d.avoid ? `, kuhindari: ${d.avoid}` : ""}.`,
-    (d) => `Kutulis ulang (percobaan ${d.attempt}/${d.max})${d.avoid ? `, tanpa: ${d.avoid}` : ""}. Punchline-nya tetap kujaga ya.`,
+    (d) => `Percobaan ${d.attempt}/${d.max}${d.avoid ? `, kuhindari: ${d.avoid}` : ""}.`,
+    (d) => `Kutulis ulang. Percobaan ${d.attempt}/${d.max}${d.avoid ? `, kuhindari: ${d.avoid}` : ""}.`,
+    (d) => `Kutulis ulang (percobaan ${d.attempt}/${d.max})${d.avoid ? `, tanpa: ${d.avoid}` : ""}.`,
     (d) => `Percobaan ${d.attempt}/${d.max}, kutulis ulang${d.avoid ? ` dan kuhindari: ${d.avoid}` : ""}.`,
   ] as Line<{ attempt: number; max: number; avoid: string }>,
   modelError: [
@@ -73,8 +72,8 @@ const MAUL = {
 const SARAS = {
   ruleFail: [
     (d) => `Rule check gagal: ${d.fails}. ${retryOrYou(d.last, "Maul, tolong tulis ulang.", "Retry habis, kukirim ke kamu.")}`,
-    (d) => `Langsung saja: rule check gagal (${d.fails}). ${retryOrYou(d.last, "Balik ke Maul untuk ditulis ulang.", "Retry habis, ini ke kamu.")}`,
-    (d) => `Datanya bilang rule check gagal: ${d.fails}. ${retryOrYou(d.last, "Maul, tulis ulang tanpa itu.", "Retry habis, kukirim ke kamu.")}`,
+    (d) => `Rule check gagal (${d.fails}). ${retryOrYou(d.last, "Balik ke Maul untuk ditulis ulang.", "Retry habis, ini ke kamu.")}`,
+    (d) => `Gagal di rule check: ${d.fails}. ${retryOrYou(d.last, "Maul, tulis ulang tanpa itu.", "Retry habis, kukirim ke kamu.")}`,
   ] as Line<{ fails: string; last: boolean }>,
   rulePass: [
     (d) => `Rule check lolos${d.nearMiss ? " (mepet batas)" : ""}. Sekarang kubaca sebagai orang asing.`,
@@ -83,13 +82,13 @@ const SARAS = {
   ] as Line<{ nearMiss: boolean }>,
   borderline: [
     (d) => `Confidence ${d.confidence}%, dekat ambang ${d.threshold}%. Aku minta pendapat kedua.`,
-    (d) => `Datanya bilang ${d.confidence}%, mepet ambang ${d.threshold}%. Kuambil sampel kedua.`,
+    (d) => `Confidence ${d.confidence}%, mepet ambang ${d.threshold}%. Kuambil sampel kedua.`,
   ] as Line<{ confidence: number; threshold: number }>,
   // Verdict first, then evidence, then the fix (the judge's own suggestion).
   verdict: [
     (d) => `${d.core}.${d.issues ? ` ${d.issues}` : ""}${d.fix ? ` Saran: ${d.fix}` : ""} ${d.decision}`,
-    (d) => `Langsung saja. ${d.core}.${d.issues ? ` ${d.issues}` : ""}${d.fix ? ` Perbaikan: ${d.fix}` : ""} ${d.decision}`,
-    (d) => `${d.core}.${d.issues ? ` Catatanku satu: ${d.issues}` : ""}${d.fix ? ` Saran: ${d.fix}` : ""} ${d.decision}`,
+    (d) => `${d.core}.${d.issues ? ` ${d.issues}` : ""}${d.fix ? ` Perbaikan: ${d.fix}` : ""} ${d.decision}`,
+    (d) => `${d.core}.${d.issues ? ` Masalahnya: ${d.issues}` : ""}${d.fix ? ` Saran: ${d.fix}` : ""} ${d.decision}`,
   ] as Line<{ core: string; issues: string; fix: string; decision: string }>,
 };
 
@@ -104,11 +103,8 @@ const fnv = (s: string) => {
   return h;
 };
 
-export const signatures = (s: Speaker, text: string) => VOICES[s].signature.filter((x) => text.includes(x));
-
 /**
- * The line `speaker` says for `kind` in this thread. Starts at a hashed variant and moves on while that variant
- * would repeat a catchphrase already said in the thread (every kind has a variant without one).
+ * The line `speaker` says for `kind` in this thread: a hashed pick among the variants, the same on every run.
  */
 export function voiced<S extends Speaker, K extends keyof Phrases[S]>(t: Thread, s: S, kind: K, ...[d]: Phrases[S][K] extends Line<infer D> ? (D extends void ? [] : [D]) : never): string {
   const variants = PHRASES[s][kind] as unknown as Line<unknown>;
@@ -116,12 +112,5 @@ export function voiced<S extends Speaker, K extends keyof Phrases[S]>(t: Thread,
   const nth = t.count.get(id) ?? 0;
   t.count.set(id, nth + 1);
   const start = fnv(`${t.key}|${id}|${nth}`);
-  for (let i = 0; i < variants.length; i++) {
-    const text = variants[(start + i) % variants.length](d);
-    const sig = signatures(s, text);
-    if (sig.some((x) => t.used.has(x))) continue;
-    sig.forEach((x) => t.used.add(x));
-    return text;
-  }
   return variants[start % variants.length](d);
 }

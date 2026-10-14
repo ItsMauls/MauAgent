@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PHRASES, signatures, thread, voiced, type Speaker, type Thread } from ".";
+import { PHRASES, thread, voiced, type Speaker, type Thread } from ".";
 
 /** One value for every field any line reads. */
 const D = {
@@ -23,29 +23,16 @@ test("the same thread, kind and agent always give the same line (no randomness)"
   assert.ok(lines.size > 1);
 });
 
-test("a catchphrase is said at most once per thread, even across many retries", () => {
-  for (const key of ["c1:s0:r0", "c1:s1:r0", "x", "y:brief"]) {
-    const seen = new Map<string, string>();
-    for (const [s, text] of all(key, 4)) {
-      for (const sig of signatures(s, text)) {
-        assert.ok(!seen.has(sig), `"${sig}" repeated in ${key}:\n${seen.get(sig)}\n${text}`);
-        seen.set(sig, text);
-      }
-    }
-  }
-});
-
-test("every variant: at most one catchphrase; every kind has a plain variant; emoji only for Maul, at most one", () => {
+test("every variant: no stock catchphrase; emoji only for Maul, at most one", () => {
   for (const s of speakers) for (const k of kinds(s)) {
     const texts = (PHRASES[s] as unknown as Record<string, ((d: unknown) => string)[]>)[k].map((f) => f(D));
     assert.ok(texts.length >= 2, `${s}.${k} needs variants`);
     for (const text of texts) {
-      assert.ok(signatures(s, text).length <= 1, `${s}.${k}: ${text}`);
+      assert.ok(!/Punchline-nya tetap|kupangkas|Gaskeun|Noted|rangkum dulu|Langsung saja|Datanya bilang|Catatanku satu/.test(text), `${s}.${k} has a catchphrase: ${text}`);
       const emoji = text.match(/\p{Extended_Pictographic}/gu) ?? [];
       assert.ok(emoji.length <= (s === "socmedSpecialist" ? 1 : 0), `${s}.${k}: ${text}`);
       assert.ok(!/sambil|menyeruput|blazer|Ogilvy|Zalora|GoTo/i.test(text), `${s}.${k} roleplays: ${text}`);
     }
-    assert.ok(texts.some((x) => !signatures(s, x).length), `${s}.${k} has no plain variant`);
   }
 });
 

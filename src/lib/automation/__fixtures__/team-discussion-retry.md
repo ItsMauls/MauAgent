@@ -20,7 +20,7 @@ Variant 3 (7/10): ok
 
 **Saras · Post QC** (post 4): Rule check gagal: Engagement bait: Follow for follow. Maul, tolong tulis ulang.
 
-**Maul · Socmed Specialist** (post 4): Aman, kubenerin. Post 4 kutulis ulang, kuhindari: Engagement bait: Follow for follow.
+**Maul · Socmed Specialist** (post 4): Kubenerin post 4, kuhindari: Engagement bait: Follow for follow.
 
 **Maul · Socmed Specialist** (post 4): Variant 1: "Santai4 dulu4 ini sore4."
 Variant 2: "Santai5 dulu5 ini sore5."
@@ -40,6 +40,6 @@ Variant 3 (7/10): ok
 
 **Saras · Post QC** (post 4): Rule check aman. Lanjut ke penilaian kualitas.
 
-**Saras · Post QC** (post 4): Datanya bilang 88%, mepet ambang 80%. Kuambil sampel kedua.
+**Saras · Post QC** (post 4): Confidence 88%, mepet ambang 80%. Kuambil sampel kedua.
 
-**Saras · Post QC** (post 4): Langsung saja. Verdict: pass (9 / 9 dari 10). Confidence 88%. Disetujui otomatis.
+**Saras · Post QC** (post 4): Verdict: pass (9 / 9 dari 10). Confidence 88%. Disetujui otomatis.
