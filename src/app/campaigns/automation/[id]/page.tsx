@@ -137,8 +137,8 @@ async function Overview({ id, goal, status, brief, capUsd, warnAtPct, qc }: { id
               <p><b>Objective:</b> {brief.objective}</p>
               <p><b>Audience:</b> {brief.audienceInsight}</p>
               <p><b>Tone:</b> {brief.toneNotes}</p>
-              {brief.pillars.map((p) => (
-                <div key={p.pillar}><b>{p.pillar}:</b> {p.focus}<div className="text-ink-2">Angles: {p.angles.join(" · ")}{p.avoid.length ? ` · Avoid: ${p.avoid.join(", ")}` : ""}</div></div>
+              {brief.pillars.map((p, i) => (
+                <div key={`${i}:${p.pillar}`}><b>{p.pillar}:</b> {p.focus}<div className="text-ink-2">Angles: {p.angles.join(" · ")}{p.avoid.length ? ` · Avoid: ${p.avoid.join(", ")}` : ""}</div></div>
               ))}
               {brief.mustAvoid.length > 0 && <p><b>Never:</b> {brief.mustAvoid.join("; ")}</p>}
             </Modal>
