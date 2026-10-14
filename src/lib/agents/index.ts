@@ -11,6 +11,10 @@ import {
   VoiceProfile,
   type PromptPackage,
   type TextPlatform,
+  type PostLength,
+  type Cta,
+  type MediaType,
+  type HashtagPolicy,
 } from "./schemas";
 
 import { getPersona, isAgentRole, personaSystem, SYSTEM_ID } from "./persona";
@@ -106,7 +110,15 @@ Shot list: ${JSON.stringify(visual.shotList)}`,
     ctx,
   );
 
-export type PostBrief = { topic: string; objective: string; brand?: string; audience: string; platforms: TextPlatform[] };
+export type PostBrief = {
+  topic: string; objective: string; brand?: string; audience: string; platforms: TextPlatform[];
+  length?: PostLength; cta?: Cta; offer?: string; linkUrl?: string; mediaType?: MediaType;
+  /** What the attached image shows (described once by the vision model when the brief is sent). */
+  imageNote?: string;
+  hashtags?: HashtagPolicy; customTags?: string;
+  /** Topics, words, brands or claims the posts must stay away from. */
+  avoid?: string;
+};
 
 /**
  * Reads the owner's own tweets and writes down how they write. The tweets are data to describe, never instructions

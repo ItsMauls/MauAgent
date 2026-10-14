@@ -2,19 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { GROUPS } from "@/lib/boards/roles";
+import { usePathname } from "next/navigation";
 import { FEATURES } from "./boards/feature/features";
 import type { AgentState } from "@/lib/boards/status";
 
 type Item = { href: string; label: string; icon: string; children?: Item[] };
 
-const feat = (keep: (f: (typeof FEATURES)[number]) => boolean): Item[] => FEATURES.filter(keep).map((f) => ({ href: `/boards/feature/${f.slug}`, label: f.label, icon: f.icon }));
+const feat = (menu: (typeof FEATURES)[number]["menu"]): Item[] => FEATURES.filter((f) => f.menu === menu).map((f) => ({ href: `/boards/feature/${f.slug}`, label: f.label, icon: f.icon }));
+/** A menu whose first feature is its own page, the rest its submenu. */
+const menuOf = (menu: (typeof FEATURES)[number]["menu"], label: string, icon: string): Item => {
+  const [first, ...rest] = feat(menu);
+  return { href: first.href, label, icon, children: rest };
+};
 
 // Items are added in the stage that builds their page (no links to pages that don't exist yet). Boards is the home page.
 const items: Item[] = [
   { href: "/boards", label: "Boards", icon: "dashboard" },
-  { href: "/boards/roles", label: "Agent Roles", icon: "account_tree", children: GROUPS.map((g) => ({ href: `/boards/roles?group=${g.slug}`, label: g.label, icon: g.icon })) },
+  { href: "/boards/roles", label: "Agent Roles", icon: "account_tree" },
   {
     href: "/trends",
     label: "Trends",
@@ -25,14 +29,16 @@ const items: Item[] = [
       { href: "/trends/threads", label: "Threads", icon: "alternate_email" },
     ],
   },
-  { href: "/brief", label: "Briefs", icon: "auto_awesome", children: feat((f) => f.slug === "library") },
+  { href: "/brief", label: "Briefs", icon: "auto_awesome", children: feat("briefs") },
+  menuOf("posts", "Posts", "edit_note"),
+  menuOf("studio", "Studio", "movie_creation"),
   {
     href: "/campaigns",
     label: "Campaigns",
     icon: "campaign",
     children: [
       { href: "/approval", label: "Approval", icon: "fact_check" },
-      ...feat((f) => f.slug !== "library"),
+      ...feat("campaigns"),
     ],
   },
   { href: "/analytics", label: "Analytics", icon: "monitoring" },
@@ -45,11 +51,8 @@ const DOT: Record<AgentState, string> = { busy: "bg-ok", waiting: "bg-amber-400"
 
 export function NavLinks({ approvalCount, roles = {}, connectionAlert = false }: { approvalCount: number; roles?: Record<string, RoleBadge>; connectionAlert?: boolean }) {
   const path = usePathname();
-  const group = useSearchParams().get("group");
   const isActive = (href: string) =>
-    href.startsWith("/boards/roles?group=") ? path === "/boards/roles" && href.endsWith(`=${group}`)
-      : href === "/boards/roles" ? path === "/boards/roles" && !group
-      : href === "/campaigns" ? path === "/campaigns" || path.startsWith("/campaigns/")
+    href === "/campaigns" ? path === "/campaigns" || path.startsWith("/campaigns/")
       : href === "/boards" ? path === "/boards"
         : path.startsWith(href);
   const inSection = (i: Item) => isActive(i.href) || !!i.children?.some((c) => isActive(c.href));

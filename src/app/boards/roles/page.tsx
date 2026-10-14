@@ -15,7 +15,7 @@ function Card({ role, info }: { role: BoardRole; info: Info }) {
   const name = info.names[role.agentRole] ?? role.label;
   const [stateLabel, stateCls] = STATE_PILL[roleWork(role.agentRole, info.snap).state];
   return (
-    <Link href={`/boards/roles?role=${role.slug}`} scroll={false} className={`card flex min-h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft ${dim ? "opacity-40" : ""}`}>
+    <Link href={`/boards/roles?role=${role.slug}${info.group ? `&group=${info.group}` : ""}`} scroll={false} className={`card flex min-h-36 w-full min-w-0 flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:bg-brand-soft ${dim ? "opacity-40" : ""}`}>
       <RoleAvatar role={role.agentRole} className="h-14 w-14" />
       <span className="w-full truncate font-bold">{name}</span>
       <span className="w-full truncate text-xs text-ink-2">
@@ -102,17 +102,32 @@ function Rows({ info }: { info: Info }) {
 export default async function RolesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, names, snap] = await Promise.all([searchParams, agentNames(), boardSnapshot()]);
   const open = roleBySlug(sp.role ?? "");
+  const group = GROUPS.find((g) => g.slug === sp.group)?.slug;
   return (
     <div className="space-y-6 pt-4">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Agent Roles</h1>
-        <p className="text-sm text-ink-2">The agents in flow order; pick a purpose in the menu to highlight its agents. Click one for its tasks, execution queue and memory.</p>
+      <header className="space-y-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Agent Roles</h1>
+          <p className="text-sm text-ink-2">The agents in flow order; filter by purpose to highlight its agents. Click one for its chat, memory, current focus and artifacts.</p>
+        </div>
+        <nav aria-label="Filter by purpose" className="flex flex-wrap gap-2">
+          {[{ slug: undefined, label: "All", icon: "apps" }, ...GROUPS].map((g) => (
+            <Link
+              key={g.label}
+              href={g.slug ? `/boards/roles?group=${g.slug}` : "/boards/roles"}
+              aria-current={g.slug === group ? "page" : undefined}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${g.slug === group ? "bg-brand text-white" : "bg-white text-ink-2 hover:bg-brand-soft"}`}
+            >
+              <span className="material-symbols-outlined !text-[18px]">{g.icon}</span>{g.label}
+            </Link>
+          ))}
+        </nav>
       </header>
       <div>
-        <Rows info={{ names, snap, group: GROUPS.find((g) => g.slug === sp.group)?.slug }} />
+        <Rows info={{ names, snap, group }} />
       </div>
       {open && (
-        <RouteDialog key={open.slug} title={names[open.agentRole] ?? open.label} closeHref="/boards/roles">
+        <RouteDialog key={open.slug} title={names[open.agentRole] ?? open.label} closeHref={group ? `/boards/roles?group=${group}` : "/boards/roles"}>
           <RoleDetail slug={open.slug} sp={sp} />
         </RouteDialog>
       )}

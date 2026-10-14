@@ -114,6 +114,26 @@ export type BudgetDecisionInput = z.input<typeof BudgetDecisionInput>;
 export const TextPlatform = z.enum(["twitter", "threads"]);
 export type TextPlatform = z.infer<typeof TextPlatform>;
 
+/** Text brief controls. The form, the task input, the prompt and the validator all read these lists. */
+export const POST_LENGTHS = ["auto", "short", "medium", "long"] as const;
+export const PostLength = z.enum(POST_LENGTHS);
+export type PostLength = z.infer<typeof PostLength>;
+/** Sentences per post for a fixed length (auto = the content type decides); `soft` = the character target. */
+export const LENGTH_RULES: Record<PostLength, { sentences?: [number, number]; soft?: number }> = {
+  auto: {}, short: { sentences: [1, 2], soft: 180 }, medium: { sentences: [2, 4] }, long: { sentences: [4, 7] },
+};
+export const CTAS = ["none", "ask_reply", "ask_repost", "ask_follow", "visit_link", "promo"] as const;
+export const Cta = z.enum(CTAS);
+export type Cta = z.infer<typeof Cta>;
+export const HASHTAG_POLICIES = ["none", "minimal", "trending", "custom"] as const;
+export const HashtagPolicy = z.enum(HASHTAG_POLICIES);
+export type HashtagPolicy = z.infer<typeof HashtagPolicy>;
+export const MEDIA_TYPES = ["text_only", "image", "video", "link"] as const;
+export const MediaType = z.enum(MEDIA_TYPES);
+export type MediaType = z.infer<typeof MediaType>;
+/** Most hashtags per post on each platform. */
+export const HASHTAG_MAX: Record<TextPlatform, number> = { twitter: 2, threads: 3 };
+
 /**
  * Socmed Specialist output: a batch of ready-to-schedule posts. `thread` holds the parts after `text`, so an empty
  * array is a single post. Buffer rejects a thread longer than 25 items in total (MAX_THREAD).
@@ -142,6 +162,10 @@ const AltVariant = z.object({ text: postText, thread: postThread, angle: z.strin
  * the content pipeline (src/lib/content): type, validation status and reasons, the AI's source and confidence, the alternatives,
  * and the slots that produced nothing usable.
  */
+/** One line of the Socmed Specialist / QC conversation of a batch, built from what the pipeline actually did. */
+export const Note = z.object({ who: z.enum(["socmedSpecialist", "qc"]), text: z.string(), post: z.number().int().optional() });
+export type Note = z.infer<typeof Note>;
+
 export const SocialPosts = z.object({
   posts: z
     .array(
@@ -156,11 +180,16 @@ export const SocialPosts = z.object({
         sourceNote: z.string().nullish(),
         confidence: Confidence.nullish(),
         alternatives: z.array(AltVariant).default([]),
+        /** The CTA this post carries (brief CTA spread over the batch); null = none. */
+        cta: Cta.nullish().catch(null),
+        /** The owner's call on the post; only approved posts can be scheduled. */
+        decision: z.enum(["approved", "rejected"]).nullish(),
       }),
     )
     .min(1)
     .max(20),
   skipped: z.array(z.object({ type: z.string(), reason: z.string() })).default([]),
+  transcript: z.array(Note).default([]),
 });
 export type SocialPosts = z.infer<typeof SocialPosts>;
 

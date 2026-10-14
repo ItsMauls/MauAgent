@@ -177,7 +177,7 @@ function BriefTab({ brief, kit }: { brief: Record<string, unknown>; kit: { id: s
         <dt className="label">Creative kit</dt>
         <dd className="text-sm">
           {kit.map((a) => `${a.name} (${a.kind})`).join(", ") || "—"}{" "}
-          <Link href="/boards/content-creator?tab=library" className="font-semibold text-brand">Edit links →</Link>
+          <Link href="/boards/feature/library" className="font-semibold text-brand">Edit links →</Link>
         </dd>
       </div>
       {Object.entries(brief).map(([k, v]) => (

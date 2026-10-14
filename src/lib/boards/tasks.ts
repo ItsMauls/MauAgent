@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { accountManager, accountTeam, artDirector, creativeDirector, producer, promptPackage, type CallCtx } from "@/lib/agents";
-import { generatePosts } from "@/lib/content/generate";
+import { dbDeps, generatePosts } from "@/lib/content/generate";
 import { activeTypes } from "@/lib/content/config";
 import { estimateCallUsd } from "@/lib/ai/generate";
 import { topTrendRefs } from "@/lib/trends";
@@ -11,7 +11,7 @@ import { generate } from "@/lib/ai/image";
 import { storyboardPdf } from "./storyboardPdf";
 import { uploadBuffer } from "@/lib/s3";
 import { renderCut } from "@/lib/media/renderCut";
-import { ClientBrief, CreativeBrief, InternalBrief, normalizeType, Platform, TextPlatform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
+import { ClientBrief, CreativeBrief, Cta, HashtagPolicy, InternalBrief, MediaType, normalizeType, type Note, Platform, PostLength, TextPlatform, VideoSource, VisualDirection, type Stage } from "@/lib/agents/schemas";
 import { budgetGate, latestPrice, monthSpent } from "@/lib/cost";
 import { seedanceConfig } from "@/lib/providers/seedance";
 
@@ -50,6 +50,18 @@ export const briefFrom = (b: { objective?: string; product: string; audience: st
     budgetCapUsd: s.campaignBudgetUsd, defaultSource: s.defaultVideoSource,
   });
 
+/**
+ * Saves the Specialist / QC conversation on the task row as it grows, so the workspace can show it while the batch runs.
+ * Cosmetic: a failed write never stops the batch. ponytail: rewrites the whole list per line (tens of lines); append in SQL if it grows.
+ */
+const liveNotes = (taskId: string) => {
+  const all: Note[] = [];
+  return async (n: Note) => {
+    all.push(n);
+    await db.agentTask.update({ where: { id: taskId }, data: { progress: all as object[] } }).catch(() => {});
+  };
+};
+
 export const TASKS: Record<string, TaskDef> = {
   socmedSpecialist: def({
     output: "Text posts for X and Threads (single or thread)",
@@ -63,10 +75,21 @@ export const TASKS: Record<string, TaskDef> = {
       count: z.number().int().min(1).max(20).default(6).meta({ title: "How many posts" }),
       // Empty = the weighted mix from config/content-types.yaml.
       types: z.array(z.preprocess(normalizeType, z.enum(activeTypes()))).default([]).meta({ title: "Content types (empty = mix)" }),
+      length: PostLength.default("auto").meta({ title: "Post length" }),
+      cta: Cta.default("none").meta({ title: "Call to action" }),
+      offer: z.string().trim().max(200).optional().meta({ title: "Product / offer name (promo CTA)" }),
+      linkUrl: z.url({ protocol: /^https?$/ }).max(500).optional().meta({ title: "Link URL" }),
+      mediaType: MediaType.default("text_only").meta({ title: "Media type" }),
+      imageNote: z.string().trim().max(1500).optional().meta({ title: "What the image shows", multiline: true }),
+      hashtags: HashtagPolicy.default("none").meta({ title: "Hashtags & mentions" }),
+      customTags: z.string().trim().max(300).optional().meta({ title: "Custom hashtags / mentions" }),
+      avoid: z.string().trim().max(1000).optional().meta({ title: "Avoid / forbidden topics", multiline: true }),
+    }).refine((i) => i.length === "auto" || i.length === "long" || !i.types.includes("thread"), {
+      message: "A thread needs Long or Auto post length", path: ["length"],
     }),
     // Each post gets a content type (config/content-types.yaml), 3 variants and automatic checks (src/lib/content).
     // The schedule panel on the result page lays them into day x time slots and pushes them to Buffer.
-    run: (i, c) => generatePosts(i, c.llm),
+    run: (i, c) => generatePosts(i, c.llm, { ...dbDeps, note: liveNotes(c.taskId) }),
   }),
   accountManager: def({
     output: "InternalBrief",

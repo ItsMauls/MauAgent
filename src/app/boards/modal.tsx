@@ -4,8 +4,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 /** Button that opens a native <dialog> (focus trap, Esc and backdrop come from the platform). Children are server-rendered. */
-export function Modal({ trigger, className, label, title, onToggle, children }: { trigger: ReactNode; className?: string; label?: string; title: string; onToggle?: (open: boolean) => void; children: ReactNode }) {
+export function Modal({ trigger, className, label, title, onToggle, defaultOpen, children }: { trigger: ReactNode; className?: string; label?: string; title: string; onToggle?: (open: boolean) => void; defaultOpen?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (defaultOpen && !ref.current?.open) ref.current?.showModal();
+  }, [defaultOpen]);
   return (
     <>
       <button type="button" aria-label={label} onClick={() => { ref.current?.showModal(); onToggle?.(true); }} className={className}>{trigger}</button>

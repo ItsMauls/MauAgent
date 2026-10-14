@@ -16,7 +16,7 @@ export async function PublicationTab({ campaignId, status }: { campaignId: strin
     return (
       <p className="rounded-2xl bg-canvas p-6 text-sm text-ink-2">
         {status === "APPROVED" ? NO_TARGET_NOTE : "Nothing published yet."}{" "}
-        {status === "APPROVED" && <Link href="/boards/content-creator?tab=schedule" className="font-semibold text-brand">Schedule & publishing →</Link>}
+        {status === "APPROVED" && <Link href="/boards/feature/publishing" className="font-semibold text-brand">Schedule & publishing →</Link>}
       </p>
     );
   return (

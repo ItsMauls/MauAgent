@@ -1,4 +1,5 @@
 import { createTextPosts } from "../boards/actions";
+import { GenerationInfo } from "../boards/conversation";
 import { trendTopics } from "@/lib/content/trendTopics";
 import { ContentTypes } from "./sources";
 import { SuggestDetails } from "./suggest-details";
@@ -28,6 +29,38 @@ const TEXT_GOALS = [
   "Entertain / go viral",
   "Drive traffic to a link",
   "Promote a product or offer",
+];
+
+type Option = { v: string; t: string; d?: string };
+
+const LENGTHS: Option[] = [
+  { v: "auto", t: "Auto", d: "AI picks per post" },
+  { v: "short", t: "Short", d: "1–2 sentences" },
+  { v: "medium", t: "Medium", d: "2–4 sentences" },
+  { v: "long", t: "Long", d: "4–7 sentences or a thread" },
+];
+
+const CTA_OPTIONS: Option[] = [
+  { v: "none", t: "None" },
+  { v: "ask_reply", t: "Ask to reply" },
+  { v: "ask_repost", t: "Ask to repost" },
+  { v: "ask_follow", t: "Ask to follow" },
+  { v: "visit_link", t: "Visit link" },
+  { v: "promo", t: "Promo" },
+];
+
+const HASHTAG_OPTIONS: Option[] = [
+  { v: "none", t: "None" },
+  { v: "minimal", t: "Minimal", d: "0–2 relevant" },
+  { v: "trending", t: "Trending", d: "relevant trends first" },
+  { v: "custom", t: "Custom" },
+];
+
+const MEDIA_OPTIONS: Option[] = [
+  { v: "text_only", t: "Text only" },
+  { v: "image", t: "Image" },
+  { v: "video", t: "Video" },
+  { v: "link", t: "Link (every post carries it)" },
 ];
 
 const TEXT_PLATFORMS = [
@@ -81,8 +114,59 @@ export async function TextBrief() {
               ))}
             </div>
           </fieldset>
+          <Radios label="Post length" name="length" options={LENGTHS} hint="Short and medium are single posts; long may become a short thread." />
+          <details className="group/adv rounded-2xl border border-line">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4 text-sm font-semibold">
+              <span>Advanced options <span className="font-normal text-ink-3">· call to action, media & link, hashtags, topics to avoid</span></span>
+              <span className="material-symbols-outlined !text-[18px] text-ink-3 transition group-open/adv:rotate-180">expand_more</span>
+            </summary>
+            <div className="space-y-6 border-t border-line p-4">
+              <div className="group space-y-3">
+                <Radios label="Call to action" name="cta" options={CTA_OPTIONS} hint="Spread over the batch, never in every post" />
+                <p className="hidden text-xs text-ink-3 group-has-[[value=visit_link]:checked]:block">Uses the Link URL under Media & link.</p>
+                <div className="hidden group-has-[[value=promo]:checked]:block">
+                  <Field label="Product / offer name (optional)">
+                    <input name="offer" maxLength={200} placeholder="e.g. Buy 1 Get 1 latte until 31 Oct" className="input" />
+                  </Field>
+                </div>
+              </div>
+              <fieldset className="space-y-3">
+                <legend className="label">Media & link (optional)</legend>
+                <Field label="Link URL" hint="Added to the end of the post by code">
+                  <input name="linkUrl" type="url" maxLength={500} placeholder="https://…" className="input" />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Image upload" hint="The AI reads it once">
+                    <input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="input" />
+                  </Field>
+                  <Field label="…or image URL">
+                    <input name="imageUrl" type="url" pattern="https://.*" placeholder="https://…/photo.jpg" className="input" />
+                  </Field>
+                </div>
+                <Field label="Media type">
+                  <select name="mediaType" defaultValue="text_only" className="input">
+                    {MEDIA_OPTIONS.map((m) => <option key={m.v} value={m.v}>{m.t}</option>)}
+                  </select>
+                </Field>
+              </fieldset>
+              <div className="group space-y-3">
+                <Radios label="Hashtags & mentions" name="hashtags" options={HASHTAG_OPTIONS} hint="X 0–2, Threads 0–3" />
+                <div className="hidden group-has-[[value=custom]:checked]:block">
+                  <Field label="Your hashtags / mentions">
+                    <input name="customTags" maxLength={300} placeholder="#ngopi #blokm @yourbrand" className="input" />
+                  </Field>
+                </div>
+              </div>
+              <Field label="Avoid / forbidden topics (optional)" hint="Wins over the topic">
+                <textarea name="avoid" rows={2} maxLength={1000} placeholder={"e.g. politics, competitor brands, the word \"murah\", health claims we can't prove"} className="input" />
+              </Field>
+            </div>
+          </details>
           <div className="-mx-6 -mb-6 flex flex-col items-center justify-between gap-4 rounded-b-3xl bg-canvas/70 p-6 sm:-mx-8 sm:-mb-8 sm:flex-row sm:p-8">
-            <p className="text-sm text-ink-2">Nothing is posted yet. You review and schedule on the next page.</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
+              <span>Nothing is posted yet. You review and schedule on the next page.</span>
+              <GenerationInfo className="inline-flex items-center gap-1 font-semibold text-brand" />
+            </div>
             <button className="btn-primary w-full px-8 py-3 sm:w-auto">
               <span className="material-symbols-outlined">edit_note</span>Write the posts
             </button>
@@ -101,6 +185,26 @@ export function Field({ label, hint, children }: { label: string; hint?: React.R
       </span>
       {children}
     </label>
+  );
+}
+
+/** Single-choice pills; the first option is the default. */
+function Radios({ label, hint, name, options }: { label: string; hint?: string; name: string; options: Option[] }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 flex w-full items-center justify-between gap-2">
+        <span className="label mb-0">{label}</span>
+        {hint && <span className="text-[11px] text-ink-3">{hint}</span>}
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o, i) => (
+          <label key={o.v} className="pill cursor-pointer border-line bg-white px-4 py-2.5 text-sm text-ink-2 has-checked:border-brand has-checked:bg-brand has-checked:text-white has-focus-visible:ring-2 has-focus-visible:ring-brand/40">
+            <input type="radio" name={name} value={o.v} defaultChecked={i === 0} required className="sr-only" />
+            {o.t}{o.d && <span className="text-xs opacity-75">· {o.d}</span>}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

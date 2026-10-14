@@ -7,6 +7,7 @@ import type { ApprovalPackage, ProductionPlan } from "@/lib/agents/schemas";
 import { restoreFinalCut, getSettings } from "../actions";
 import { BudgetGatePanel, RestoreButton } from "../ui";
 import { ApprovalDecision } from "./decision";
+import { ApprovalSummary } from "../boards/outputs";
 import { QUEUE_STATUSES, StatusPill } from "../pills";
 
 export const dynamic = "force-dynamic";
@@ -114,32 +115,9 @@ async function Card({ c, monthSpentUsd, monthCapUsd }: { c: QueueCampaign; month
         </div>
         <div className="space-y-4 text-sm">
           {pkg ? (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <span className="pill border-blue-200 bg-brand-soft text-brand-dark">Self score {pkg.selfScore}/10</span>
-                <span className="pill border-line bg-white text-ink-2">QC cost so far US${(pkg.costSoFar ?? 0).toFixed(2)}</span>
-              </div>
-              {pkg.captionPerPlatform.map((p) => (
-                <div key={p.platform}>
-                  <p className="label">{p.platform} caption</p>
-                  <p className="whitespace-pre-wrap">{p.caption}</p>
-                </div>
-              ))}
-              <p className="text-brand">{pkg.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}</p>
-              <div>
-                <p className="label">Brand-safety checklist</p>
-                <ul className="space-y-1">
-                  {pkg.brandSafetyChecklist.map((b) => (
-                    <li key={b.item} className="flex gap-2">
-                      <span className={`material-symbols-outlined !text-[18px] ${b.ok ? "text-ok" : "text-bad"}`} aria-label={b.ok ? "OK" : "Issue"}>
-                        {b.ok ? "check_circle" : "error"}
-                      </span>
-                      <span><b>{b.item}</b>{b.note ? ` — ${b.note}` : ""}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
+            <ApprovalSummary pkg={pkg}>
+              <span className="pill border-line bg-white text-ink-2">QC cost so far US${(pkg.costSoFar ?? 0).toFixed(2)}</span>
+            </ApprovalSummary>
           ) : (
             <p className="text-ink-2">No approval package (QC) for this version.</p>
           )}

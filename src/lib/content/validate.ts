@@ -1,7 +1,7 @@
 // Step 4 of a text-post batch: automatic checks on one generated variant. Pure; the prompt asks for the same rules,
 // but only what passes here can be scheduled.
-import { textProblem } from "@/lib/publish";
-import type { ContentType } from "@/lib/agents/schemas";
+import { CHAR_LIMIT, charCount, textProblem } from "@/lib/publish";
+import { HASHTAG_MAX, LENGTH_RULES, type ContentType, type HashtagPolicy, type PostLength, type TextPlatform } from "@/lib/agents/schemas";
 import type { Banned, ContentConfig } from "./config";
 
 export type ReviewStatus = "approved" | "needs_review" | "rejected";
@@ -20,6 +20,12 @@ export type CheckCtx = {
   banned: Banned;
   /** Texts of recent posts and of earlier posts in this batch, for the similarity check. */
   corpus: string[];
+  /** Brief controls; all optional, so a check without them behaves as before. */
+  audience?: string;
+  length?: PostLength;
+  hashtags?: HashtagPolicy;
+  customTags?: string;
+  avoid?: string;
 };
 
 // ---------- text helpers ----------
@@ -48,6 +54,49 @@ export function detectLanguage(text: string, min = 2): "id" | "en" | null {
 
 /** Language of the brief topic; a topic is short, so one function word is enough. */
 export const topicLanguage = (topic: string) => detectLanguage(topic, 1);
+
+const LOCAL = /\b(indonesia\w*|lokal|local|jakarta|jabodetabek|bandung|surabaya|yogya\w*|warga|neighbou?rhood)\b/i;
+const GLOBAL = /\b(global|international|internasional|worldwide|english[- ]speaking)\b/i;
+/**
+ * The language to write in: a clear audience signal (local / Indonesian vs global / international) wins, otherwise the
+ * topic's. ponytail: keyword match; "local" assumes an Indonesian account, which is the only kind this app runs.
+ */
+export function briefLanguage(topic: string, audience = ""): "id" | "en" | null {
+  if (GLOBAL.test(audience)) return "en";
+  if (LOCAL.test(audience)) return "id";
+  return topicLanguage(topic);
+}
+
+/**
+ * Cuts a part that is over the platform limit: at the last sentence end that fits, else at the last word plus "…".
+ * `suffix` (e.g. "\n<link>") is kept whole. `cut` = share of the text removed, so the caller can flag a trim that may
+ * have changed the meaning.
+ */
+export function fitToLimit(service: string, text: string, suffix = ""): { text: string; cut: number } {
+  const limit = CHAR_LIMIT[service];
+  const fits = (t: string) => charCount(service, t + suffix) <= limit;
+  if (!limit || fits(text)) return { text: text + suffix, cut: 0 };
+  const ends = [...text.matchAll(/[.!?…](?=\s|$)/g)].map((m) => m.index! + 1).reverse();
+  const sentence = ends.find((i) => fits(text.slice(0, i)));
+  let out = "";
+  if (sentence) out = text.slice(0, sentence);
+  else {
+    for (const w of text.split(/(?<=\s)/)) {
+      if (!fits(`${out}${w}`.trimEnd() + "…")) break;
+      out += w;
+    }
+    out = `${out.trimEnd()}…`;
+  }
+  out = out.trim();
+  return { text: out + suffix, cut: 1 - out.length / text.length };
+}
+
+const HASHTAG = /(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+/gu;
+export const hashtags = (s: string) => s.match(HASHTAG) ?? [];
+/** A hook that asks: the first sentence ends in a question mark. */
+export const questionHook = (s: string) => /^[^.!?…\n]*\?/.test(s.trim());
+/** The brief's avoid list as single terms (comma, semicolon or line separated). */
+export const avoidTerms = (avoid = "") => avoid.split(/[,;\n]/).map((t) => t.trim()).filter((t) => t.length > 1);
 
 const tokens = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
 /** Jaccard similarity of the normalised word sets (0-1). */
@@ -93,12 +142,18 @@ const GUE = /(?<![\p{L}])(?:gue|gw|gua|lo|lu|elo|elu)(?![\p{L}])/iu;
 const AKU = /(?<![\p{L}])(?:aku|kamu)(?![\p{L}])/iu;
 
 /** What the batch has used so far, for the checks that look across posts. */
-export type BatchState = { texts: string[]; laughs: number; laughQuota: number; closingEmojis: string[] };
+export type BatchState = {
+  texts: string[]; laughs: number; laughQuota: number; closingEmojis: string[];
+  /** Posts opening with a question so far, and how many a batch may have (Infinity = the owner asked for questions). */
+  questions?: number; questionQuota?: number;
+};
 
 /** Reject reasons that depend on the other posts in the batch (empty = fine). */
 export function batchProblems(v: Variant, b: BatchState): string[] {
   const out: string[] = [];
   if (laughs([v.text, ...v.thread].join("\n")) && b.laughs >= b.laughQuota) out.push(`"wkwk"/"haha" already used ${b.laughs} time(s) in this batch (max ${b.laughQuota})`);
+  if (b.questionQuota !== undefined && questionHook(v.text) && (b.questions ?? 0) >= b.questionQuota)
+    out.push(`Already ${b.questions} question hooks in this batch (max ${b.questionQuota}): open with a statement`);
   const open = opening(v.text);
   if (open && b.texts.some((t) => opening(t) === open)) out.push(`Opens like another post in this batch ("${open}")`);
   const end = closingEmoji(v.text);
@@ -110,18 +165,19 @@ export function batchProblems(v: Variant, b: BatchState): string[] {
 export function addToBatch(b: BatchState, v: Variant) {
   b.texts.push(v.text);
   if (laughs([v.text, ...v.thread].join("\n"))) b.laughs++;
+  if (questionHook(v.text)) b.questions = (b.questions ?? 0) + 1;
   const end = closingEmoji(v.text);
   if (end) b.closingEmojis.push(end);
 }
 
 /**
- * Review gate before anything goes to Buffer. `variant` 0 is the post itself, k is alternatives[k-1]. A rejected
- * variant never goes; a needs_review one goes only when the owner ticked Reviewed. Edited text is re-checked against
- * the reject list. Posts from batches made before content types have no status and pass.
+ * Review gate before anything goes to Buffer. `variant` 0 is the post itself, k is alternatives[k-1]. A variant the
+ * checks rejected never goes, and nothing goes until the owner approved the post. Edited text is re-checked against
+ * the reject list.
  */
 export function scheduleProblem(
-  posts: { status?: ReviewStatus; alternatives: { status: ReviewStatus }[] }[],
-  item: { slot: number; variant: number; reviewed: boolean; text: string; thread: string[] },
+  posts: { status?: ReviewStatus; decision?: "approved" | "rejected" | null; alternatives: { status: ReviewStatus }[] }[],
+  item: { slot: number; variant: number; text: string; thread: string[] },
   banned: Banned,
 ): string | null {
   const post = posts[item.slot];
@@ -129,7 +185,7 @@ export function scheduleProblem(
   const v = item.variant === 0 ? post : post.alternatives[item.variant - 1];
   if (!v) return `Post ${item.slot + 1} has no variant ${item.variant + 1}`;
   if (v.status === "rejected") return `Post ${item.slot + 1} was rejected by the checks`;
-  if (v.status === "needs_review" && !item.reviewed) return `Post ${item.slot + 1} needs review: tick "Reviewed" first`;
+  if (post.decision !== "approved") return `Post ${item.slot + 1} is not approved: approve it first`;
   const hits = bannedHits([item.text, ...item.thread].join("\n"), banned.reject);
   return hits.length ? `Post ${item.slot + 1} contains banned words: ${hits.join(", ")}` : null;
 }
@@ -160,17 +216,28 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
     const unnumbered = body.findIndex((t, i) => !new RegExp(`^${i + 1}\\s*[./)]`).test(t.trim()));
     if (unnumbered >= 0) reject.push(`Thread part ${unnumbered + 2} must start with "${unnumbered + 1}."`);
   } else if (v.thread.length && !c.allowThread) reject.push("This type is a single post, not a thread");
-  if (c.maxSentences && sentenceCount(v.text) > c.maxSentences)
-    reject.push(`At most ${c.maxSentences} sentence${c.maxSentences === 1 ? "" : "s"} (got ${sentenceCount(v.text)})`);
+  // A fixed post length replaces the type's sentence cap; long counts the whole thread. Too few is not checked: the
+  // sentence heuristic is fuzzy.
+  const range = ctx.length && !c.thread ? LENGTH_RULES[ctx.length].sentences : undefined;
+  const maxSentences = range ? range[1] : c.maxSentences;
+  const counted = range && ctx.length === "long" ? parts.reduce((n, t) => n + sentenceCount(t), 0) : sentenceCount(v.text);
+  if (maxSentences && counted > maxSentences)
+    reject.push(`At most ${maxSentences} sentence${maxSentences === 1 ? "" : "s"} (got ${counted})`);
+  if (ctx.length && ctx.length !== "auto" && ctx.length !== "long" && v.thread.length) reject.push(`A ${ctx.length} post is a single post, not a thread`);
   if (c.noHashtags && /#[\p{L}\p{N}_]/u.test(all)) reject.push("No hashtags in this type");
+  else if (ctx.hashtags) {
+    const max = ctx.hashtags === "none" ? 0 : Math.min(...ctx.platforms.map((p) => HASHTAG_MAX[p as TextPlatform] ?? 3));
+    const n = hashtags(all).length;
+    if (n > max) reject.push(max ? `${n} hashtags (max ${max})` : "No hashtags: the brief asks for none");
+  }
   if (c.question) {
     if (!v.text.includes("?")) reject.push("A question post needs a question mark");
     const options = v.text.split("\n").filter((l) => OPTION.test(l)).length;
     if (options && (options < 2 || options > 4)) reject.push(`Poll options must be 2-4 (got ${options})`);
   }
 
-  // Language follows the topic.
-  const want = topicLanguage(ctx.topic);
+  // Language follows the audience signal, else the topic.
+  const want = briefLanguage(ctx.topic, ctx.audience);
   const got = detectLanguage(all);
   if (want && got && want !== got) review.push(`Written in ${got === "id" ? "Indonesian" : "English"}, the topic is in ${want === "id" ? "Indonesian" : "English"}`);
 
@@ -187,6 +254,8 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
   // Banned words.
   const hardHits = bannedHits(all, ctx.banned.reject);
   if (hardHits.length) reject.push(`Banned: ${hardHits.join(", ")}`);
+  const avoided = bannedHits(all, avoidTerms(ctx.avoid));
+  if (avoided.length) reject.push(`Mentions what the brief says to avoid: ${avoided.join(", ")}`);
   const softHits = bannedHits(all, ctx.banned.review);
   if (softHits.length) review.push(`Sensitive or flagged words: ${softHits.join(", ")}`);
 
@@ -212,7 +281,7 @@ export function validateVariant(v: Variant, ctx: CheckCtx): Verdict {
   if (c.source === "story") review.push("Written from the topic and your context, not a real experience: check it before posting");
 
   // Possible real people.
-  const people = possiblePeople(all, `${ctx.topic} ${ctx.context ?? ""} ${note}`, ctx.cfg.realPersonAllowlist);
+  const people = possiblePeople(all, `${ctx.topic} ${ctx.context ?? ""} ${note} ${ctx.customTags ?? ""}`, ctx.cfg.realPersonAllowlist);
   if (people.length) review.push(`Mentions what may be a real person, brand or place outside the research: ${[...new Set(people)].slice(0, 3).join(", ")}`);
 
   if (reject.length) return { status: "rejected", reasons: [...reject, ...review] };

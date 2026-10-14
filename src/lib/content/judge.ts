@@ -13,7 +13,7 @@ export const JudgeVerdicts = z.object({
     unsupportedClaims: z.array(z.string()).describe("facts, numbers, places, people or brands that are not in the CONTEXT"),
     samePersona: z.boolean().describe("sounds like the persona described"),
     soundsHuman: z.boolean().describe("read alone, without context, it sounds like something a person would say"),
-    reasons: z.array(z.string()).describe("short reasons for the score"),
+    reasons: z.array(z.string()).describe("1-2 short sentences in casual everyday Indonesian, first person, like a colleague giving feedback, e.g. \"Aku suka yang ini karena kedengarannya kayak orang beneran.\" or \"Kurang cocok deh, nyebut penghargaan yang nggak ada di riset.\" No jargon like 'pronoun', 'coherent' or 'unsupported'."),
   })),
 });
 export type JudgeVerdicts = z.infer<typeof JudgeVerdicts>;

@@ -1,5 +1,7 @@
 // Agent status for Boards, derived deterministically from Step / Campaign / AgentTask rows (never an LLM). Pure: tested.
 
+import { taskHref } from "./flows";
+
 /** Short human title for a task from its input. */
 export const taskTitle = (input: unknown) => {
   const i = (input ?? {}) as Record<string, unknown>;
@@ -39,7 +41,7 @@ export function roleWork(agentRole: string, s: Snapshot): { state: AgentState; i
       .map((t) => ({
         key: `task:${t.id}`, title: t.title, stage: t.status === "RUNNING" ? "Direct task" : t.status === "QUEUED" ? "Task queued" : "Task waiting",
         since: t.createdAt, state: t.status === "RUNNING" ? ("busy" as const) : ("waiting" as const), column: t.status === "RUNNING" ? ("working" as const) : t.status === "QUEUED" ? ("queued" as const) : ("waiting" as const),
-        href: `/boards/roles?role=${t.roleSlug}&tab=task&task=${t.id}`, taskId: t.id,
+        href: taskHref(t.agentRole, t.id), taskId: t.id,
       })),
     ...s.waiting
       .filter((w) => GATE_OWNER[w.status]?.role === agentRole)

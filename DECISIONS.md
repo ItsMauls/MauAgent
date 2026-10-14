@@ -9,6 +9,13 @@ Decisions that deviate from, or are not covered by, PRD v1.0 (11 Oct 2026).
 - **Approval reminders: email only** (Phase 1).
 - **IG/TikTok accounts are already Business/Creator**; the "Connect account" page (OAuth) is built at the start of Phase 1.
 
+## Tech stack cleanup (14 Oct 2026)
+PRD §2 lists choices the code never adopted or no longer uses. Actual state:
+- **Storage: Cloudinary only, S3 dropped (owner decision, 14 Oct 2026).** Images and videos both go to Cloudinary (`src/lib/cloudinary.ts`, REST, no SDK). Cloudinary URLs are permanent, so they also remove Buffer's 7-day presign limit (`docs/buffer-connections.md`).
+  - **Migration pending:** code still uses S3 for videos, files, presigned URLs, the health check and demo seed (`s3.ts`, `publish.ts`, `assets.ts`, `renderCut.ts`, `integrationsHealth.ts`, `seed-demo.ts`, `ShotAsset.s3Key`, `.env.example`, `docker-compose`). `README.md` and `docs/buffer-connections.md` describe the S3 behavior and stay until the code moves.
+- **Not used:** Remotion (FFmpeg only), Mastra (Vercel AI SDK only), ECS/Fargate/Lambda (no deploy yet; FFmpeg runs in the Next.js request), Veo (Seedance, see above).
+- **Two orchestrators coexist:** Inngest (default) and Trigger.dev (`WORKFLOW_ENGINE`) until parity is proven.
+
 ## Technical (Phase 0)
 - **One Next.js app, not a monorepo.** PRD §8 packages become `src/lib/{agents,workflows,providers,media}`. Split into packages if a separate worker appears.
 - **Prisma 6, AI SDK 5, Inngest 3** are pinned (latest majors not yet verified for this project).
@@ -597,3 +604,21 @@ no Threads channel, so `metadata.threads.thread` and the Threads thread cap are 
   source and confidence will be shown for checking.
 - **Verified:** 141 tests; live with free models: a generated picture was described (first vision model returned 429 on
   both keys, the second worked), an English topic gave English posts with sources, an Indonesian one Indonesian.
+
+## Text brief controls and per-post approval (2026-10-14)
+
+- **Brief controls** (stored in the Socmed Specialist task input, no migration): post length (auto/short/medium/long),
+  call to action, media & link, hashtag policy, avoid list. Short and medium drop thread types; long lets any type spill
+  into a short thread; a fixed length replaces the type's sentence cap.
+- **Style follows the audience**: no style picker. The prompt maps audience signals to a style and layers the owner's
+  writing voice on top. **Language**: a clear audience signal (local / Indonesian vs global / international) wins over the
+  topic's language; otherwise the topic decides, as before.
+- **CTA spread**: at most 30% of a batch of 6+ posts carries the CTA (half of a smaller batch), spread evenly.
+- **Media is context only**: the image is described once by the vision model when the brief is sent, and the link is
+  appended to the post by code (never written by the model). Nothing new is attached in Buffer.
+- **Over the limit**: a part is trimmed at a sentence (else word) boundary; a trim that removes over 20% asks for review.
+- **Approval**: every post needs the owner's Approve before it can go to Buffer (enforced in `pushDrafts`); passing the
+  checks is not enough any more, and this replaces the Reviewed tick. Reject takes a post out of the slots (restorable).
+  Regenerate rewrites one post inline from the same brief, type and CTA, avoiding the batch's other posts; the monthly
+  cap is checked first.
+- **Question hooks**: at most 2 per batch unless the owner picked only the question type.

@@ -9,11 +9,13 @@ import { getSettings } from "@/lib/settings";
 import { ClientBrief, SocialPosts } from "@/lib/agents/schemas";
 import { contentSetup } from "@/lib/content/config";
 import { classify, describeImage, extractText, MAX_FILES } from "@/lib/content/context";
+import { generatePosts, type BatchInput } from "@/lib/content/generate";
 import { scheduleProblem } from "@/lib/content/validate";
 import { analyzeVoice, suggestBriefDetails } from "@/lib/agents";
 import { ROLES, roleBySlug } from "@/lib/boards/roles";
 import { writeFeedback } from "@/lib/boards/feedback";
 import { estimateTask, refIds, taskGate, TASKS } from "@/lib/boards/tasks";
+import { CHAINS, FLOWS, flowInputs, taskHref, type FlowSlug } from "@/lib/boards/flows";
 import { MODES } from "@/lib/publish";
 import { createScheduleJobs, updatePostJob } from "@/lib/publishPlan";
 import { ownMessages } from "@/lib/voiceSamples";
@@ -29,8 +31,10 @@ function taskDef(slug: string) {
   return { role, def };
 }
 
+const ThenRole = z.enum(Object.keys(CHAINS) as [string, ...string[]]).optional();
+
 /** Deterministic estimate + monthly-cap check shown before a task runs. Re-done in requestTask and in Inngest. */
-export async function estimateTaskAction(slug: string, raw: unknown) {
+export async function estimateTaskAction(slug: string, raw: unknown, thenRole?: string) {
   const { role, def } = taskDef(slug);
   const input = def.input.parse(raw);
   // Referenced artifacts, or for a campaign pick (QC) the latest output of each role in that campaign.
@@ -39,27 +43,53 @@ export async function estimateTaskAction(slug: string, raw: unknown) {
     where: { OR: [{ id: { in: ids } }, { campaignId: { in: ids } }] },
     orderBy: { version: "desc" }, distinct: ["campaignId", "agentRole"], select: { payload: true },
   });
-  const estUsd = await estimateTask(role.agentRole, input, refs.reduce((n, r) => n + JSON.stringify(r.payload).length, 0));
+  const then = ThenRole.parse(thenRole);
   const s = await getSettings();
+  // ponytail: the chained tasks' reference (this task's output) does not exist yet, so they are estimated without it; the worker gate re-checks the cap.
+  const chained = then ? await Promise.all(CHAINS[then]("pending", { defaultVideoSource: s.defaultVideoSource }).map((c) => estimateTask(c.agentRole, c.input))) : [];
+  const estUsd = await estimateTask(role.agentRole, input, refs.reduce((n, r) => n + JSON.stringify(r.payload).length, 0)) + chained.reduce((n, x) => n + x, 0);
   const gate = await taskGate(estUsd, Number(s.monthlyBudgetUsd));
   return { estUsd, monthUsd: gate.monthUsd, monthCapUsd: Number(s.monthlyBudgetUsd), blocked: gate.blocked, reasons: gate.reasons };
 }
 
-export async function requestTask(slug: string, raw: unknown, confirmOverCap: boolean) {
+export async function requestTask(slug: string, raw: unknown, confirmOverCap: boolean, thenRole?: string) {
   const { role, def } = taskDef(slug);
   const input = def.input.parse(raw);
-  const est = await estimateTaskAction(slug, input);
+  const est = await estimateTaskAction(slug, input, thenRole);
   // The cap is enforced here, not only in the UI: over cap needs the explicit confirmation.
   if (est.blocked && !z.boolean().parse(confirmOverCap)) throw new Error(`${est.reasons.join(" ")} Confirm to run anyway.`);
   const t = await db.agentTask.create({
-    data: { agentRole: role.agentRole, input: input as object, estUsd: est.estUsd, confirmedOverCap: est.blocked && confirmOverCap },
+    data: { agentRole: role.agentRole, input: input as object, estUsd: est.estUsd, confirmedOverCap: est.blocked && confirmOverCap, thenRole: ThenRole.parse(thenRole) },
   });
   await inngest.send({ id: `${t.id}:${t.attempt}`, name: "agent/task.requested", data: { taskId: t.id } });
   revalidatePath("/boards", "layout");
   return t.id;
 }
 
-/** /brief in text-post mode: the same task as the Socmed Specialist Quick task, then open its result page. */
+// ---------- Multi-agent features: several roles on one pick (Production pack, Final delivery) ----------
+
+const FlowSlugSchema = z.enum(Object.keys(FLOWS) as [FlowSlug, ...FlowSlug[]]);
+
+async function flowSteps(slug: string, pickId: string) {
+  const s = await getSettings();
+  return flowInputs(FlowSlugSchema.parse(slug), z.string().min(1, "Pick one first").parse(pickId), { defaultVideoSource: s.defaultVideoSource });
+}
+
+/** Sum of each role's estimate; the cap check is on the total. */
+export async function estimateFlow(slug: string, pickId: string) {
+  const ests = await Promise.all((await flowSteps(slug, pickId)).map((st) => estimateTaskAction(st.slug, st.input)));
+  const estUsd = ests.reduce((n, e) => n + e.estUsd, 0);
+  const s = await getSettings();
+  const gate = await taskGate(estUsd, Number(s.monthlyBudgetUsd));
+  return { estUsd, monthUsd: gate.monthUsd, monthCapUsd: Number(s.monthlyBudgetUsd), blocked: gate.blocked, reasons: gate.reasons };
+}
+
+/** One task per role, each through requestTask (its own estimate, cap gate and Inngest event). */
+export async function runFlow(slug: string, pickId: string, confirmOverCap: boolean) {
+  for (const st of await flowSteps(slug, pickId)) await requestTask(st.slug, st.input, confirmOverCap);
+}
+
+/** /brief in text-post mode (and the Text posts feature): a Socmed Specialist task, then open its result in the feature. */
 export async function createTextPosts(form: FormData) {
   // Chips + optional free text collapse into the single string the agent reads, as in createCampaign.
   const merge = (chips: string, detail: string) =>
@@ -68,15 +98,39 @@ export async function createTextPosts(form: FormData) {
   const audience = merge("audiences", "audience");
   if (!objective) throw new Error("Pick at least one business goal or describe the goal");
   if (!audience) throw new Error("Pick at least one target audience or describe the audience");
-  const id = await requestTask(
-    "socmed-specialist",
-    {
-      topic: form.get("topic"), objective, brand: String(form.get("brand") ?? "").trim() || undefined, audience,
-      platforms: form.getAll("platforms"), count: Number(form.get("count")), types: form.getAll("types"),
-    },
-    false,
-  );
-  redirect(`/boards/roles?role=socmed-specialist&tab=task&task=${id}`);
+  const opt = (k: string) => String(form.get(k) ?? "").trim() || undefined;
+  const cta = opt("cta");
+  const hashtags = opt("hashtags");
+  const input = {
+    topic: form.get("topic"), objective, brand: opt("brand"), audience,
+    platforms: form.getAll("platforms"), count: Number(form.get("count")), types: form.getAll("types"),
+    length: opt("length"), cta, offer: cta === "promo" ? opt("offer") : undefined, linkUrl: opt("linkUrl"), mediaType: opt("mediaType"),
+    hashtags, customTags: hashtags === "custom" ? opt("customTags") : undefined, avoid: opt("avoid"),
+  };
+  // Validate before the paid image description, so a bad field fails fast.
+  TASKS.socmedSpecialist.input.parse(input);
+  const imageNote = await describeBriefImage(form.get("imageFile"), opt("imageUrl"));
+  const id = await requestTask("socmed-specialist", { ...input, imageNote }, false);
+  redirect(taskHref("socmedSpecialist", id));
+}
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+/** What the brief's image shows (an upload wins over a URL), described once by the vision model; undefined = no image. */
+async function describeBriefImage(file: FormDataEntryValue | null, url?: string) {
+  if (file instanceof File && file.size > 0) {
+    const c = classify(file.name, file.size);
+    if (c.kind !== "image") throw new Error(c.kind === "unsupported" ? c.reason : `${file.name}: not a picture`);
+    return describeImage(file.name, c.mime, new Uint8Array(await file.arrayBuffer()), { step: "brief-image" });
+  }
+  if (!url) return undefined;
+  const u = z.url({ protocol: /^https$/, error: "The image URL must start with https://" }).parse(url);
+  const res = await fetch(u, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  const mime = res?.headers.get("content-type")?.split(";")[0].trim() ?? "";
+  if (!res?.ok || !IMAGE_TYPES.includes(mime)) throw new Error("The image URL did not return a PNG, JPG, WebP or GIF picture");
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length > MAX_FILE_BYTES) throw new Error("The image is larger than 10 MB");
+  return describeImage(u.split("/").pop() || "image", mime, bytes, { step: "brief-image" });
 }
 
 const BriefHelperInput = z.object({
@@ -214,6 +268,20 @@ export async function removeMemory(id: string) {
   revalidatePath("/boards", "layout");
 }
 
+/**
+ * Delete a text-post batch (scrap it while queued, remove it when done or failed) with its output. A running batch
+ * cannot be removed, and neither can one with posts in Buffer: those are managed in Publishing, so nothing is orphaned there.
+ */
+export async function deleteBatch(taskId: string) {
+  const id = z.string().min(1).parse(taskId);
+  const t = await db.agentTask.findUniqueOrThrow({ where: { id }, select: { agentRole: true, status: true } });
+  if (t.agentRole !== "socmedSpecialist") throw new Error("Only a text-post batch can be deleted here");
+  if (t.status === "RUNNING") throw new Error("This batch is being written right now: wait until it finishes");
+  if (await db.publishJob.count({ where: { agentTaskId: id } })) throw new Error("This batch has posts in Publishing: remove or publish those first");
+  await db.$transaction([db.artifact.deleteMany({ where: { agentTaskId: id } }), db.agentTask.delete({ where: { id } })]);
+  revalidatePath("/boards", "layout");
+}
+
 /** Scrap a task that has not started: the row is deleted, and the worker skips an event whose task is no longer queued. */
 export async function scrapTask(taskId: string) {
   const { count } = await db.agentTask.deleteMany({ where: { id: z.string().parse(taskId), status: "QUEUED" } });
@@ -282,8 +350,8 @@ const SchedulePlan = z.object({
   items: z
     .array(z.object({
       text: z.string().trim().min(1), thread: z.array(z.string().trim().min(1)).default([]), dueAtUtc: z.iso.datetime(),
-      // Which generated post and variant this is, and whether the owner reviewed it (content-type review gate).
-      slot: z.number().int().min(0), variant: z.number().int().min(0).default(0), reviewed: z.boolean().default(false),
+      // Which generated post and variant this is (the approval gate reads the stored post).
+      slot: z.number().int().min(0), variant: z.number().int().min(0).default(0),
     }))
     .min(1, "The schedule has no filled slots")
     .max(200),
@@ -297,7 +365,7 @@ export async function pushDrafts(taskId: string, raw: z.input<typeof SchedulePla
   const t = await db.agentTask.findUniqueOrThrow({ where: { id: z.string().parse(taskId) }, select: { id: true, agentRole: true, status: true, artifactId: true } });
   if (t.agentRole !== "socmedSpecialist" || t.status !== "DONE" || !t.artifactId) throw new Error("This task has no posts to schedule");
   const plan = SchedulePlan.parse(raw);
-  // Unreviewed needs_review and rejected variants never reach Buffer, whatever the client sent.
+  // Unapproved posts and variants the checks rejected never reach Buffer, whatever the client sent.
   const { posts } = SocialPosts.parse((await db.artifact.findUniqueOrThrow({ where: { id: t.artifactId }, select: { payload: true } })).payload);
   const problem = plan.items.map((i) => scheduleProblem(posts, i, contentSetup().banned)).find(Boolean);
   if (problem) throw new Error(problem);
@@ -313,6 +381,47 @@ export async function pushDrafts(taskId: string, raw: z.input<typeof SchedulePla
   if (pending.length) await inngest.send(pending.map((j) => ({ name: "publish/job", data: { jobId: j.id } })));
   revalidatePath("/boards", "layout");
   return { total: jobs.length, sent: pending.length };
+}
+
+/** The posts artifact of a finished Socmed Specialist task. */
+async function postsOf(taskId: string) {
+  const t = await db.agentTask.findUniqueOrThrow({ where: { id: z.string().parse(taskId) }, select: { id: true, agentRole: true, status: true, artifactId: true, input: true } });
+  if (t.agentRole !== "socmedSpecialist" || t.status !== "DONE" || !t.artifactId) throw new Error("This task has no posts");
+  const a = await db.artifact.findUniqueOrThrow({ where: { id: t.artifactId }, select: { id: true, payload: true } });
+  return { task: t, artifactId: a.id, data: SocialPosts.parse(a.payload) };
+}
+
+/** Approve (ready to schedule), reject (out of the queue) or reset one post of a batch. */
+export async function setPostDecision(taskId: string, slot: number, decision: "approved" | "rejected" | null) {
+  const { artifactId, data } = await postsOf(taskId);
+  const i = z.number().int().min(0).max(data.posts.length - 1).parse(slot);
+  data.posts[i].decision = z.enum(["approved", "rejected"]).nullable().parse(decision);
+  await db.artifact.update({ where: { id: artifactId }, data: { payload: data } });
+  revalidatePath("/boards", "layout");
+}
+
+/**
+ * Writes one post of a batch again from the same brief, its content type and CTA, avoiding the other posts. The
+ * monthly cap is checked like a task. ponytail: runs inline (about 20-60 s); move it to Inngest if the server action
+ * time limit bites.
+ */
+export async function regeneratePost(taskId: string, slot: number) {
+  const { task, artifactId, data } = await postsOf(taskId);
+  const i = z.number().int().min(0).max(data.posts.length - 1).parse(slot);
+  const old = data.posts[i];
+  const input = TASKS.socmedSpecialist.input.parse(task.input) as BatchInput;
+  const one: BatchInput = {
+    ...input, count: 1, types: old.type ? [old.type] : input.types, cta: old.cta ?? "none",
+    siblings: data.posts.flatMap((p, k) => (k === i ? [] : [[p.text, ...p.thread].join("\n")])),
+  };
+  const estUsd = await estimateTask("socmedSpecialist", one);
+  const gate = await taskGate(estUsd, Number((await getSettings()).monthlyBudgetUsd));
+  if (gate.blocked) throw new Error(gate.reasons.join(" "));
+  const { payload } = await generatePosts(one, { step: "regenerate-post" });
+  data.posts[i] = { ...payload.posts[0], decision: null };
+  await db.artifact.update({ where: { id: artifactId }, data: { payload: data } });
+  revalidatePath("/boards", "layout");
+  return data.posts[i];
 }
 
 /** Step 2 of two: the drafts Buffer already holds become scheduled posts. Deliberately a separate confirmation. */

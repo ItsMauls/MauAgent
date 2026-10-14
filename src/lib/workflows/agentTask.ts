@@ -2,7 +2,8 @@ import { z } from "zod";
 import { inngest } from "@/lib/inngest";
 import { db } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
-import { TASKS, taskFlow, taskGate, type TaskCtx } from "@/lib/boards/tasks";
+import { estimateTask, TASKS, taskFlow, taskGate, type TaskCtx } from "@/lib/boards/tasks";
+import { CHAINS } from "@/lib/boards/flows";
 
 /** Persist the output once: the task row's artifactId is the guard, inside one transaction. */
 export async function saveTaskResult(taskId: string, role: string, payload: unknown, costUsd: number) {
@@ -35,7 +36,7 @@ export const agentTask = inngest.createFunction(
     // A task scrapped while queued is gone (or no longer QUEUED): stop before any worker or paid call starts.
     const queued = await step.run("still-queued", () => db.agentTask.count({ where: { id: taskId, status: "QUEUED" } }));
     if (!queued) return { skipped: true };
-    return taskFlow(steps, {
+    await taskFlow(steps, {
       start: async () => {
         const t = await db.agentTask.update({ where: { id: taskId }, data: { status: "RUNNING", error: null } });
         return { role: t.agentRole, input: t.input, confirmedOverCap: t.confirmedOverCap, estUsd: Number(t.estUsd) };
@@ -59,5 +60,27 @@ export const agentTask = inngest.createFunction(
         await db.agentTask.updateMany({ where: { id: taskId, status: { not: "DONE" } }, data: { status: "FAILED", error: msg.slice(0, 500) } });
       },
     });
+    await step.run("chain", () => chainNext(taskId));
   },
 );
+
+/** A finished task with a chain (thenRole) hands its output to the chain's roles as new tasks. Guarded per role, so a replay never makes a second one. */
+export async function chainNext(taskId: string) {
+  const t = await db.agentTask.findUniqueOrThrow({ where: { id: taskId }, select: { agentRole: true, status: true, artifactId: true, thenRole: true, confirmedOverCap: true } });
+  const chain = t.thenRole ? CHAINS[t.thenRole] : undefined;
+  if (t.status !== "DONE" || !t.artifactId || !chain) return [];
+  const s = await getSettings();
+  const started: string[] = [];
+  for (const { agentRole, input } of chain(t.artifactId, { defaultVideoSource: s.defaultVideoSource })) {
+    // The first field is the one that points at this output (internalBriefId, visualDirectionId).
+    const field = Object.keys(input)[0];
+    if (await db.agentTask.count({ where: { agentRole, input: { path: [field], equals: t.artifactId } } })) continue;
+    const next = await db.agentTask.create({
+      // The owner's over-cap confirmation covered the whole chain (the estimate included it).
+      data: { agentRole, input: input as object, requestedByRole: t.agentRole, estUsd: await estimateTask(agentRole, input), confirmedOverCap: t.confirmedOverCap },
+    });
+    await inngest.send({ id: `${next.id}:${next.attempt}`, name: "agent/task.requested", data: { taskId: next.id } });
+    started.push(next.id);
+  }
+  return started;
+}

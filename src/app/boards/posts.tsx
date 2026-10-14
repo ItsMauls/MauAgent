@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CHAR_LIMIT, MODES, MODE_LABEL, charCount, fmtZoned, postText, textProblem, toZonedInput, zonedToIso } from "@/lib/publish";
 import { MAX_THREAD } from "@/lib/providers/buffer/mapper";
+import { taskHref } from "@/lib/boards/flows";
 import { CancelPublishButton, ErrorText, useAction } from "../ui";
 import { updateTextPost } from "./actions";
 import { Modal } from "./modal";
@@ -135,7 +136,7 @@ function PostCard({ p, timezone }: { p: PostRow; timezone: string }) {
   const [editing, setEditing] = useState(false);
   const text = p.campaignId ? postText(p.caption, p.hashtags) : (p.caption ?? "");
   const editable = !p.campaignId && (p.status === "draft" || p.status === "scheduled" || (p.status === "failed" && !p.postId && p.error !== "Cancelled"));
-  const open = p.permalink ?? (p.campaignId ? `/campaigns/${p.campaignId}?tab=publication` : p.agentTaskId ? `/boards/roles?role=socmed-specialist&tab=task&task=${p.agentTaskId}` : null);
+  const open = p.permalink ?? (p.campaignId ? `/campaigns/${p.campaignId}?tab=publication` : p.agentTaskId ? taskHref("socmedSpecialist", p.agentTaskId) : null);
 
   return (
     <article className="space-y-3 rounded-2xl border border-line bg-white p-4">

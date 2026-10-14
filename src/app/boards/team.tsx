@@ -11,6 +11,7 @@ import { StatusPill } from "../pills";
 import { CardError, load, RoleAvatar, STATE_PILL } from "./cards";
 import { FeedbackForm } from "./feedback";
 import { CircleSelect, SessionSlider } from "./modal";
+import { chosenConcept } from "./outputs";
 
 const product = (b: unknown, id: string) => (b as { product?: string }).product ?? id;
 const DELIVERED = ["APPROVED", "PUBLISHED"] as const;
@@ -98,7 +99,7 @@ async function TeamCircles() {
                 </div>
 
                 {done.length > 0 && (
-                  <Link href={`/boards/${role.slug}?tab=ready`} role="status" className="block rounded-xl bg-ok-soft px-3 py-2 text-xs font-semibold text-emerald-800 hover:underline">
+                  <Link href={`/boards/feature/talent`} role="status" className="block rounded-xl bg-ok-soft px-3 py-2 text-xs font-semibold text-emerald-800 hover:underline">
                     <span className="material-symbols-outlined !text-[14px] align-[-2px]">notifications_active</span> {done[0].from}: {done[0].what} is ready{done.length > 1 && ` (+${done.length - 1})`}
                   </Link>
                 )}
@@ -236,7 +237,7 @@ const roomOf = (run: RunRow) => `/campaigns/workflow?filter=all&campaign=${run.c
 const speakingOf = (run: RunRow) => run.steps.findLast((s) => s.status === "running")?.agentRole;
 function chosenOf(run: RunRow) {
   const cb = CreativeBrief.safeParse(run.campaign.artifacts[0]?.payload);
-  return cb.success ? { cb: cb.data, chosen: cb.data.conceptOptions.find((o) => cb.data.chosenConcept.includes(o.title)) ?? cb.data.conceptOptions[0] } : null;
+  return cb.success ? { cb: cb.data, chosen: chosenConcept(cb.data) } : null;
 }
 
 function SessionSummary({ run, names, isLive }: { run: RunRow; names: Record<string, string>; isLive: boolean }) {

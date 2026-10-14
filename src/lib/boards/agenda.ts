@@ -1,5 +1,7 @@
 // Boards agenda: pure date helpers + item building. Days are "YYYY-MM-DD" strings in the owner's time zone.
 
+import { taskHref } from "./flows";
+
 const DAY_MS = 86_400_000;
 export const DECISION_TIMEOUT_MS = 7 * DAY_MS; // waitForEvent timeout of the approval and budget gates
 
@@ -45,7 +47,7 @@ export function agendaItems(i: Input, tz: string): AgendaItem[] {
       items.push({
         kind: "publish", day: dayKey(j.scheduledAt, tz), at: j.scheduledAt, title: `Publish to ${j.platform} @${j.handle}`,
         // A text post has no campaign: its schedule lives on the task that generated it.
-        href: j.campaignId ? `/campaigns/${j.campaignId}?tab=publication` : `/boards/roles?role=socmed-specialist&tab=task${j.agentTaskId ? `&task=${j.agentTaskId}` : ""}`,
+        href: j.campaignId ? `/campaigns/${j.campaignId}?tab=publication` : taskHref("socmedSpecialist", j.agentTaskId),
       });
   for (const c of i.campaigns) {
     if (isDay(c.deadline)) items.push({ kind: "deadline", day: c.deadline, at: null, title: `Deadline: ${c.product}`, href: `/campaigns/${c.id}` });

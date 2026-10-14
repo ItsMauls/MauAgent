@@ -563,10 +563,15 @@ model AgentTask {
   campaignId       String?
   // Hand-off between agents (e.g. Content Creator asks the Talent Manager).
   requestedByRole  String?
+  // Chain that runs automatically on this task's output: a key of CHAINS in src/lib/boards/flows.ts
+  // (Concept: "creativeDirector"; Production pack: "production-pack").
+  thenRole         String?
   estUsd           Decimal      @default(0) @db.Decimal(10, 4)
   costUsd          Decimal      @default(0) @db.Decimal(10, 4)
   confirmedOverCap Boolean      @default(false)
   error            String?
+  // Live Socmed Specialist / QC conversation while a text batch runs (Note[]); the finished one lives in the artifact.
+  progress         Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   // Text posts scheduled from this task's output (Socmed Specialist).

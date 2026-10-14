@@ -378,13 +378,13 @@ function LibraryList({ rows, tab }: { rows: Awaited<ReturnType<typeof library>>[
 async function Talent({ q, page, qs }: SectionProps) {
   const r = await load(() => library(["character"], q, page));
   if (!r.ok) return <SectionError type="talent" />;
-  return <Section type="talent" total={r.data[0]} page={page} qs={qs}><LibraryList rows={r.data[1]} tab="/boards/talent-manager?tab=talent" /></Section>;
+  return <Section type="talent" total={r.data[0]} page={page} qs={qs}><LibraryList rows={r.data[1]} tab="/boards/feature/talent" /></Section>;
 }
 
 async function Assets({ q, page, qs }: SectionProps) {
   const r = await load(() => library(["location", "style"], q, page));
   if (!r.ok) return <SectionError type="assets" />;
-  return <Section type="assets" total={r.data[0]} page={page} qs={qs}><LibraryList rows={r.data[1]} tab="/boards/content-creator?tab=library" /></Section>;
+  return <Section type="assets" total={r.data[0]} page={page} qs={qs}><LibraryList rows={r.data[1]} tab="/boards/feature/library" /></Section>;
 }
 
 async function Prompts({ q, page, qs }: SectionProps) {

@@ -4,14 +4,14 @@ import { AiBudgetError } from "@/lib/ai/generate";
 import { CONTENT_TYPES, normalizeType, SocialPosts, type ContentType } from "@/lib/agents/schemas";
 import { DEFAULT_PERSONAS } from "@/lib/agents/persona";
 import { buildSetup, contentSetup, parseExamples, type ContentConfig } from "./config";
-import { generatePosts, onlyTypes, type ContentDeps } from "./generate";
+import { ctaPlan, generatePosts, onlyTypes, type ContentDeps } from "./generate";
 import { applyJudge, type JudgeVerdicts } from "./judge";
 import { assertPersona, buildPrompt, type PromptInput } from "./prompt";
 import { cachedSearch, cleanResults, gatherResearch, sourceNoteFor, tavily, type Raw, type Search } from "./research";
 import { pickAngles, pickType, topicEntry } from "./select";
 import { classify, contextPrompt, extractText } from "./context";
 import { parseTrends } from "./trendTopics";
-import { batchProblems, detectLanguage, jaccard, scheduleProblem, sentenceCount, validateVariant, type BatchState, type CheckCtx, type Variant } from "./validate";
+import { batchProblems, briefLanguage, detectLanguage, fitToLimit, jaccard, scheduleProblem, sentenceCount, validateVariant, type BatchState, type CheckCtx, type Variant } from "./validate";
 
 const setup = contentSetup();
 const cfg = setup.config;
@@ -272,18 +272,19 @@ test("names outside the topic, context and research are flagged for review", () 
   assert.equal(validateVariant(v("Ngopi di Kopi Senja Raya enak."), ctx({ context: "- Kopi Senja Raya: kafe di Blok M" })).status, "approved");
 });
 
-test("the schedule gate refuses unreviewed and rejected posts", () => {
+test("the schedule gate only lets approved posts through, and never a variant the checks rejected", () => {
   const posts = [
-    { status: "approved" as const, alternatives: [{ status: "needs_review" as const }] },
-    { status: "needs_review" as const, alternatives: [] },
-    { alternatives: [] },
+    { status: "approved" as const, decision: "approved" as const, alternatives: [{ status: "rejected" as const }] },
+    { status: "approved" as const, alternatives: [] },
+    { status: "needs_review" as const, decision: "rejected" as const, alternatives: [] },
+    { decision: "approved" as const, alternatives: [] },
   ];
-  const item = (slot: number, over = {}) => ({ slot, variant: 0, reviewed: false, text: "Kopi enak", thread: [], ...over });
+  const item = (slot: number, over = {}) => ({ slot, variant: 0, text: "Kopi enak", thread: [], ...over });
   assert.equal(scheduleProblem(posts, item(0), setup.banned), null);
-  assert.match(scheduleProblem(posts, item(0, { variant: 1 }), setup.banned)!, /needs review/);
-  assert.match(scheduleProblem(posts, item(1), setup.banned)!, /needs review/);
-  assert.equal(scheduleProblem(posts, item(1, { reviewed: true }), setup.banned), null);
-  assert.equal(scheduleProblem(posts, item(2), setup.banned), null, "batches from before content types pass");
+  assert.match(scheduleProblem(posts, item(0, { variant: 1 }), setup.banned)!, /rejected by the checks/);
+  assert.match(scheduleProblem(posts, item(1), setup.banned)!, /not approved/, "passing the checks is not enough");
+  assert.match(scheduleProblem(posts, item(2), setup.banned)!, /not approved/);
+  assert.equal(scheduleProblem(posts, item(3), setup.banned), null, "an approved post from before content types passes");
   assert.match(scheduleProblem(posts, item(0, { text: "Dijamin sembuh!" }), setup.banned)!, /banned/);
   assert.match(scheduleProblem(posts, item(5), setup.banned)!, /not in this batch/);
 });
@@ -408,6 +409,14 @@ test("a batch makes one write + one judge call per post, each with its own idemK
   assert.ok(d.logs.some((l) => l.slot === 0 && l.attempts === 1), "one log line per post");
 });
 
+test("the Specialist / QC conversation is recorded, streamed live and ends with the pick", async () => {
+  const live: unknown[] = [];
+  const { payload } = await generatePosts({ ...brief, count: 1 }, {}, deps({ note: async (n) => void live.push(n) }));
+  assert.deepEqual(live, payload.transcript);
+  assert.deepEqual([...new Set(payload.transcript.map((n) => n.who))], ["socmedSpecialist", "qc"]);
+  assert.match(payload.transcript.at(-1)!.text, /^Aku pilih variant \d \(approved\)/);
+});
+
 test("a picked satire batch writes satire", async () => {
   const d = deps({ setup: () => setup, write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => fresh("."))), costUsd: 0 }) });
   const { payload } = await generatePosts({ ...brief, count: 2, types: ["satire"] }, {}, d);
@@ -530,6 +539,12 @@ test("the owner's type picks limit the mix; a single pick lifts the anti-repeat 
   assert.deepEqual(payload.posts.map((p) => p.type), ["question", "question", "question", "question"]);
 });
 
+test("a single pick still works when the last posts of earlier batches were the same type", async () => {
+  const d = deps({ setup: () => setup, history: async () => ({ recent: Array(8).fill("question"), threadsThisWeek: 0, angles: [], sources: [] }) });
+  const { payload } = await generatePosts({ ...brief, count: 3, types: ["question"] }, {}, d);
+  assert.equal(payload.posts.length, 3);
+});
+
 // ---------- trending topic suggestions ----------
 
 test("trend suggestions: parsed from the feed, sensitive ones dropped, highest volume first, entities unescaped", () => {
@@ -541,4 +556,83 @@ test("trend suggestions: parsed from the feed, sensitive ones dropped, highest v
   assert.equal(out[0].headline, "Timnas menang");
   assert.equal(parseTrends(xml, [], 2).length, 2);
   assert.deepEqual(parseTrends("not xml", []), []);
+});
+
+// ---------- brief controls: length, CTA, link, hashtags, avoid list, audience language ----------
+
+test("fitToLimit: cuts at a sentence end, else at a word with an ellipsis, and keeps a link whole", () => {
+  const long = `${"Kalimat pertama yang cukup panjang. ".repeat(8)}Ini kalimat terakhir yang membuatnya lewat batas sekali.`;
+  const s = fitToLimit("twitter", long);
+  assert.ok(s.text.length <= 280 && s.text.endsWith("."), s.text);
+  assert.ok(s.cut > 0 && s.cut < 0.3);
+  const w = fitToLimit("twitter", "kata ".repeat(80).trim());
+  assert.ok(w.text.length <= 280 && w.text.endsWith("…"));
+  const l = fitToLimit("twitter", long, "\nhttps://example.com/a-very-long-path-that-x-counts-as-23");
+  assert.ok(l.text.endsWith("https://example.com/a-very-long-path-that-x-counts-as-23"));
+  assert.deepEqual(fitToLimit("threads", long), { text: long, cut: 0 }, "Threads allows 500");
+});
+
+test("ctaPlan: none = no CTA, at most 30% of a batch of 6+, spread out, half of a small batch", () => {
+  assert.deepEqual(ctaPlan(6, "none"), Array(6).fill(null));
+  assert.deepEqual(ctaPlan(1, "ask_reply"), ["ask_reply"]);
+  assert.equal(ctaPlan(3, "ask_follow").filter(Boolean).length, 2);
+  for (const n of [6, 10, 14, 20]) {
+    const plan = ctaPlan(n, "ask_reply");
+    const used = plan.filter(Boolean).length;
+    assert.ok(used >= 1 && used <= n * 0.3, `${n}: ${used}`);
+  }
+  assert.deepEqual(ctaPlan(10, "promo").flatMap((c, i) => (c ? [i] : [])), [1, 5, 8]);
+});
+
+test("language: a clear audience signal wins over the topic, else the topic decides", () => {
+  assert.equal(briefLanguage("best coffee near the office", "Local neighborhood"), "id");
+  assert.equal(briefLanguage("kopi enak di kantor", "Global developers, international"), "en");
+  assert.equal(briefLanguage("best coffee near the office", "Office workers"), "en");
+});
+
+test("checks: hashtag policy, the avoid list, the length cap, and the question-hook cap", () => {
+  const two = v("Kopi pagi bikin semangat kerja #kopi #pagi");
+  assert.equal(validateVariant(two, ctx({ hashtags: "minimal" })).status, "approved");
+  assert.match(validateVariant(two, ctx({ hashtags: "none" })).reasons.join(), /asks for none/);
+  assert.match(validateVariant(v("Kopi #a #b #c enak"), ctx({ hashtags: "minimal", platforms: ["twitter", "threads"] })).reasons.join(), /3 hashtags \(max 2\)/);
+  assert.match(validateVariant(v("Kopi sachet Kapal Api enak"), ctx({ avoid: "politik, Kapal Api" })).reasons.join(), /avoid: Kapal Api/);
+  const three = v("Kopi pagi itu wajib. Kopi siang itu bonus. Kopi malam itu nekat.");
+  assert.match(validateVariant(three, ctx({ length: "short" })).reasons.join(), /At most 2 sentences/);
+  assert.match(validateVariant(v("Kopi pagi itu wajib.", { thread: ["Lanjut."] }), ctx({ length: "medium" })).reasons.join(), /single post/);
+  const b: BatchState = { texts: [], laughs: 0, laughQuota: 1, closingEmojis: [], questions: 2, questionQuota: 2 };
+  assert.match(batchProblems(v("Kenapa kopi kantor selalu pahit? Karena budget."), b).join(), /question hooks/);
+  assert.deepEqual(batchProblems(v("Kopi kantor selalu pahit. Kenapa?"), b), []);
+});
+
+test("prompt: length, CTA, link, image, hashtags, avoid list and audience style reach the model", () => {
+  const p = promptInput({
+    brief: { topic: "kopi", objective: "x", audience: "Founders", platforms: ["twitter"], length: "short", hashtags: "custom", customTags: "#ngopi @kopikita",
+      avoid: "politik\nbrand pesaing", mediaType: "link", linkUrl: "https://a.id", imageNote: "secangkir latte di meja kayu" },
+    cta: "ask_reply", questionAllowed: false,
+  });
+  const { system, prompt } = buildPrompt(p);
+  assert.match(system, /PENDEK, 1-2 kalimat/);
+  assert.match(system, /GAYA DARI AUDIENS/);
+  assert.match(system, /#ngopi @kopikita/);
+  assert.match(system, /HINDARI[\s\S]*politik; brand pesaing/);
+  assert.match(prompt, /ajak pembaca membalas/);
+  assert.match(prompt, /LINK: post ini membawa link/);
+  assert.match(prompt, /secangkir latte di meja kayu/);
+  assert.match(prompt, /Buka dengan pernyataan/);
+  assert.match(buildPrompt(promptInput()).prompt, /Ajakan \(CTA\): tidak ada/);
+});
+
+test("a batch with brief controls: short drops threads, the link is appended in code, CTAs are spread", async () => {
+  const d = deps({ setup: () => setup, write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => fresh("."))), costUsd: 0 }) });
+  const { payload } = await generatePosts({ ...brief, count: 10, length: "short", cta: "visit_link", linkUrl: "https://kopi.id/promo" }, {}, d);
+  assert.ok(payload.posts.every((p) => p.type !== "thread" && !p.thread.length));
+  const withCta = payload.posts.filter((p) => p.cta === "visit_link");
+  assert.ok(withCta.length >= 1 && withCta.length <= 3);
+  assert.ok(withCta.every((p) => p.text.endsWith("\nhttps://kopi.id/promo")));
+  assert.ok(payload.posts.filter((p) => !p.cta).every((p) => !p.text.includes("https://")));
+});
+
+test("a regenerated post does not repeat its siblings' openings", async () => {
+  const d = deps({ write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => "Kopi pagi ini apa?")), costUsd: 0 }) });
+  await assert.rejects(generatePosts({ ...brief, count: 1, siblings: ["Kopi pagi ini enak."] }, {}, d), /Opens like another post/);
 });

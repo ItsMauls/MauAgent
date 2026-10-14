@@ -1,16 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { roleBySlug, type RoleTab } from "@/lib/boards/roles";
+import { roleBySlug } from "@/lib/boards/roles";
 import { boardSnapshot } from "@/lib/boards/snapshot";
 import { roleWork } from "@/lib/boards/status";
 import { formatDuration } from "@/lib/status";
 import { getPersona, isAgentRole } from "@/lib/agents/persona";
 import { agentExperience } from "@/lib/agents/memory";
-import { ChannelList } from "../../connections/channels";
 import { Empty } from "../../campaigns/[id]/shots";
-import { CreatorLibrary } from "../library";
-import { ArtifactsPanel, ExecutionQueue, MemoryPanel, QuickTask, ReadyTalent, Schedule, TalentRequests } from "../workspace";
-import { TASKS } from "@/lib/boards/tasks";
+import { ArtifactsPanel, MemoryPanel } from "../workspace";
+import { FEATURES } from "../feature/features";
 import { initials, RoleAvatar, STATE_PILL } from "../cards";
 import { ScrapButton } from "../task-form";
 import { AgentChat } from "../chat";
@@ -18,24 +16,16 @@ import type { WorkColumn, WorkItem } from "@/lib/boards/status";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "task" | "focus" | RoleTab | "chat" | "artifacts" | "memory";
+type Tab = "chat" | "memory" | "focus" | "artifacts";
 const TAB_LABEL: Record<Tab, string> = {
-  task: "Quick task",
   focus: "Current focus",
   chat: "Chat",
   artifacts: "Artifacts",
   memory: "Memory",
-  accounts: "Accounts",
-  ready: "Ready talent",
-  queue: "Execution queue",
-  schedule: "Schedule & publishing",
-  library: "Library",
-  talent: "Talent",
 };
 
 const TAB_ICON: Record<Tab, string> = {
-  task: "bolt", focus: "center_focus_strong", chat: "chat", artifacts: "inventory_2", memory: "neurology",
-  accounts: "link", ready: "task_alt", queue: "format_list_numbered", schedule: "event", library: "photo_library", talent: "face",
+  focus: "center_focus_strong", chat: "chat", artifacts: "inventory_2", memory: "neurology",
 };
 
 const COLUMNS: { key: WorkColumn; title: string; icon: string; hint: string }[] = [
@@ -83,14 +73,9 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
   const role = roleBySlug(slug);
   if (!role) notFound();
   const llmRole = isAgentRole(role.agentRole);
-  const tabs: Tab[] = [
-    ...(TASKS[role.agentRole] ? (["task"] as const) : []),
-    ...role.tabs.filter((t) => t === "queue"),
-    ...(llmRole ? (["chat", "memory"] as const) : []),
-    "focus",
-    ...role.tabs.filter((t) => t !== "queue"),
-    "artifacts",
-  ];
+  // The agent dialog is for information (and chat); the work itself starts from the features in the sidebar.
+  const tabs: Tab[] = [...(llmRole ? (["chat", "memory"] as const) : []), "focus", "artifacts"];
+  const features = FEATURES.filter((f) => (f.roles as readonly string[]).includes(role.slug));
   const tab: Tab = tabs.includes(sp.tab as Tab) ? (sp.tab as Tab) : tabs[0];
 
   const [persona, exp, work] = await Promise.all([
@@ -115,6 +100,16 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
             <span className="material-symbols-outlined !text-[16px] align-[-3px]">{role.icon}</span> {role.label}
           </p>
           <p className="mt-1 text-sm text-ink-2">{persona?.communicationStyle ?? role.blurb}</p>
+          {features.length > 0 && (
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-ink-2">Works in</span>
+              {features.map((f) => (
+                <Link key={f.slug} href={`/boards/feature/${f.slug}`} className="flex items-center gap-1 rounded-full bg-canvas px-2.5 py-1 font-semibold text-brand hover:bg-brand-soft">
+                  <span className="material-symbols-outlined !text-[14px]">{f.icon}</span>{f.label}
+                </Link>
+              ))}
+            </p>
+          )}
         </div>
         {exp && (
           <dl className="grid grid-cols-2 gap-x-6 text-sm">
@@ -142,7 +137,7 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
         {tabs.map((t) => (
           <Link
             key={t}
-            href={`/boards/roles?role=${role.slug}&tab=${t}`}
+            href={`/boards/roles?role=${role.slug}&tab=${t}${sp.group ? `&group=${sp.group}` : ""}`}
             scroll={false}
             aria-current={t === tab ? "page" : undefined}
             className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${t === tab ? "border-brand text-brand" : "border-transparent text-ink-2 hover:text-ink"}`}
@@ -153,23 +148,11 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
         ))}
       </nav>
 
-      <section className={`quiet-scroll min-h-0 flex-1 overflow-y-auto ${tab === "accounts" ? "" : "card p-6"}`}>
-        {tab === "task" && <QuickTask role={role} taskId={sp.task} />}
+      <section className="quiet-scroll card min-h-0 flex-1 overflow-y-auto p-6">
         {tab === "artifacts" && <ArtifactsPanel role={role} q={sp.q?.trim() || undefined} a={sp.a} b={sp.b} />}
         {tab === "memory" && <MemoryPanel role={role} />}
         {tab === "chat" && <AgentChat slug={role.slug} name={name} initials={initials(name)} />}
         {tab === "focus" && <Kanban items={work.items} name={name} />}
-        {tab === "accounts" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3"><p className="text-sm text-ink-2">Channels linked through Buffer (read-only).</p><Link href="/connections" className="btn-soft">Manage in Connections</Link></div>
-            <ChannelList />
-          </div>
-        )}
-        {tab === "library" && <CreatorLibrary />}
-        {tab === "talent" && <><TalentRequests /><CreatorLibrary kinds={["character"]} /></>}
-        {tab === "ready" && <ReadyTalent />}
-        {tab === "queue" && <ExecutionQueue />}
-        {tab === "schedule" && <Schedule />}
       </section>
     </div>
   );

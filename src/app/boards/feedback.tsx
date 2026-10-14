@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { AgentFeedback } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ROLES, roleByAgent } from "@/lib/boards/roles";
+import { taskHref } from "@/lib/boards/flows";
 import { addFeedback } from "./actions";
 
 const SENTIMENT = {
@@ -52,7 +53,7 @@ export function FeedbackList({ rows, showAgent = false }: { rows: (Pick<AgentFee
     <ul className="space-y-2">
       {rows.map((f) => {
         const s = SENTIMENT[f.sentiment];
-        const href = f.campaignId ? `/campaigns/${f.campaignId}?tab=decisions` : f.agentTaskId ? `/boards/${roleByAgent(f.agentRole)?.slug}?tab=task&task=${f.agentTaskId}` : null;
+        const href = f.campaignId ? `/campaigns/${f.campaignId}?tab=decisions` : f.agentTaskId ? taskHref(f.agentRole, f.agentTaskId) : null;
         return (
           <li key={f.id} className="flex gap-3 rounded-2xl bg-canvas p-3 text-sm">
             <span className={`material-symbols-outlined !text-[18px] ${s.cls}`} aria-label={s.label}>{s.icon}</span>

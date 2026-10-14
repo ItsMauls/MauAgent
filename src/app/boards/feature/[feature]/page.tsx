@@ -5,6 +5,7 @@ import { CreatorLibrary } from "../../library";
 import { ArtifactsPanel, ResultsPanel, Schedule } from "../../workspace";
 import { AutoRefresh } from "../../../ui";
 import { FEATURES } from "../features";
+import { Feature, FeatureAgents } from "../../flows";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,10 @@ export default async function FeaturePage({ params, searchParams }: { params: Pr
 
   return (
     <div className="space-y-6 pt-4">
-      <header>
+      <header className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight">{f.label}</h1>
         <p className="text-sm text-ink-2">{f.blurb}</p>
+        {f.roles.length > 0 && feature !== "text-posts" && <FeatureAgents slugs={f.roles} />}
       </header>
 
       {roles.length > 0 && (
@@ -45,6 +47,7 @@ export default async function FeaturePage({ params, searchParams }: { params: Pr
         {feature === "artifacts" && role && <><ArtifactsPanel role={role} q={sp.q?.trim() || undefined} a={sp.a} b={sp.b} /><div className="mt-8 border-t border-line pt-6"><ResultsPanel role={role} /></div></>}
         {feature === "publishing" && <Schedule />}
         {feature === "library" && <><AutoRefresh seconds={10} quiet /><CreatorLibrary intro={false} /></>}
+        {f.roles.length > 0 && <Feature slug={feature} sp={sp} base={`/boards/feature/${feature}?`} />}
       </section>
     </div>
   );
