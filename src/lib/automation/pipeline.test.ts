@@ -7,6 +7,7 @@ import type { ContentDeps } from "@/lib/content/generate";
 import { GenerationConfig, Goal, QcConfig, ReviewPolicy } from "./config";
 import { runPost, type PipelineDeps, type PostJob } from "./pipeline";
 import { qcRules } from "./qc";
+import { CampaignBrief } from "./strategy";
 
 const setup = contentSetup();
 let word = 0;
@@ -135,4 +136,43 @@ test("a manual regenerate (retryCount + 1) gets fresh idemKeys and its own retry
   assert.equal(out.retryCount, 3);
   const failing = content({ write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => `RT kalau setuju ${fresh()}`)), costUsd: 0.01 }) });
   assert.equal((await runPost(job({ retryCount: 3 }), {}, pipeline(failing))).retryCount, 5);
+});
+
+test("the Account Manager's brief reaches the writer: expanded objective, avoid list and per-pillar angles", async () => {
+  const seen: { objective: string; avoid?: string; angles: string[] }[] = [];
+  const c = content({ write: async (p) => (seen.push({ objective: p.brief.objective, avoid: p.brief.avoid, angles: p.angles }), { payload: reply(p.type, Array.from({ length: p.n }, fresh)), costUsd: 0.01 }) });
+  const brief = CampaignBrief.parse({
+    objective: "Grow followers.", audienceInsight: "Office workers.", toneNotes: "Relaxed.", mustAvoid: ["politik"],
+    pillars: [{ pillar: "kopi sore di kantor", focus: "Afternoon coffee breaks.", angles: ["ritual", "harga", "tumbler"], avoid: ["klaim kesehatan"] }],
+  });
+  await runPost(job({ brief }), {}, pipeline(c));
+  assert.match(seen[0].objective, /^Grow followers\. Posting as the account owner/);
+  assert.match(seen[0].objective, /Focus for this pillar: Afternoon coffee breaks/);
+  assert.equal(seen[0].avoid, "politik; klaim kesehatan");
+  assert.equal(seen[0].angles.length, 3);
+  assert.ok(seen[0].angles.every((a) => ["ritual", "harga", "tumbler"].includes(a)));
+  // Without a brief nothing changes.
+  seen.length = 0;
+  await runPost(job(), {}, pipeline(c));
+  assert.match(seen[0].objective, /^Posting as the account owner/);
+  assert.equal(seen[0].avoid, undefined);
+});
+
+test("the team discussion: the Specialist hands over, Post QC checks and gives a verdict, a failed rule goes back", async () => {
+  const lines: string[] = [];
+  const say = async (who: string, text: string, slot?: number) => void lines.push(`${who}@${slot}: ${text}`);
+  await runPost(job(), {}, { ...pipeline(content()), say });
+  assert.match(lines[0], /^socmedSpecialist@3: Post 4 is ready, handing it to Post QC/);
+  assert.match(lines[1], /^postQc@3: Rule check passed/);
+  assert.ok(lines.some((l) => /^postQc@3: Verdict: pass \(9( \/ 9)? of 10\)\. Confidence \d+%\. Approved automatically\./.test(l)), lines.join("\n"));
+
+  lines.length = 0;
+  const bait = content({ write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => `RT kalau setuju ${fresh()}`)), costUsd: 0.01 }) });
+  await runPost(job(), {}, { ...pipeline(bait), say });
+  assert.ok(lines.some((l) => /postQc@3: Rule check failed: .*Engagement bait.*Sending it back to the Socmed Specialist/.test(l)));
+  assert.ok(lines.some((l) => /No retries left, it goes to you/.test(l)));
+
+  lines.length = 0;
+  await runPost(job({ pilot: true }), {}, { ...pipeline(content()), say });
+  assert.ok(lines.some((l) => /Sent to you: Pilot post/.test(l)), lines.join("\n"));
 });

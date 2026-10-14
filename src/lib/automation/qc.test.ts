@@ -114,3 +114,12 @@ test("lifecycle transitions and the approval guard", () => {
   assert.match(approvalProblem({ ...ok, approvalPolicySnapshot: null })!, /policy snapshot/);
   assert.throws(() => assertApproved({ ...ok, text: " " }), /no text/);
 });
+
+test("pay as you go: no campaign cap, the monthly cap still stops it", async () => {
+  const { budgetGate } = await import("@/lib/cost");
+  const { isPayAsYouGo, PAY_AS_YOU_GO } = await import("./config");
+  assert.ok(isPayAsYouGo(PAY_AS_YOU_GO) && !isPayAsYouGo(0.01));
+  const o = { estUsd: 1, spentUsd: 9999, capUsd: Infinity, monthSpentUsd: 10, monthCapUsd: 300 };
+  assert.equal(budgetGate(o).blocked, false);
+  assert.equal(budgetGate({ ...o, monthSpentUsd: 299.5 }).blocked, true);
+});

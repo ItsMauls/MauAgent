@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewAutomationPage() {
   const [accounts, perPostUsd, settings] = await Promise.all([automationAccounts(), estimatePostUsd(), getSettings()]);
-  const types = Object.entries(contentSetup().config.types).flatMap(([t, c]) => (c && c.weight > 0 ? [{ id: t, label: c.label }] : []));
+  const types = Object.entries(contentSetup().config.types).flatMap(([t, c]) => (c && c.weight > 0 ? [{ id: t, label: c.label, blurb: c.blurb, icon: c.icon }] : []));
   return (
     <div className="space-y-6 pt-2">
       <Link href="/campaigns/automation" className="inline-flex items-center gap-1 text-sm font-semibold text-brand">
@@ -18,15 +18,15 @@ export default async function NewAutomationPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">New automation campaign</h1>
         <p className="mt-1 text-ink-2">
-          Text posts for X and Threads over a date range. Every post is checked by the Post QC agent; confident posts are approved
-          automatically, the rest wait for you. Times are in {settings.timezone}.
+          Text posts over a date range (X and Threads for now), for a personal account or a brand. Every post is checked by the Post QC agent; confident posts are approved
+          automatically, the rest wait for you. Times are in {settings.timezone}. Your command goes to the Account Manager first, who expands it into a detailed brief before the writers start.
         </p>
       </div>
       {accounts.length ? (
         <AutomationForm accounts={accounts} maxPosts={automationEnv().AUTOMATION_MAX_POSTS} perPostUsd={perPostUsd} types={types} defaultCapUsd={Number(settings.campaignBudgetUsd)} />
       ) : (
         <section className="card p-8 text-ink-2">
-          No active X or Threads channel. <Link href="/connections" className="font-semibold text-brand">Enable one in Connections →</Link>
+          No active channel to post to. <Link href="/connections" className="font-semibold text-brand">Enable one in Connections →</Link>
         </section>
       )}
     </div>

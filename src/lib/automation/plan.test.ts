@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { contentSetup } from "@/lib/content/config";
+import { onlyTypes } from "@/lib/content/generate";
 import { isThreadType } from "@/lib/content/select";
 import { Goal, PlanConfig } from "./config";
 import { buildPlan, capacity, planDays, PlanInfeasible, rng, spread, targetFrom, type PlannedPost } from "./plan";
@@ -101,4 +102,15 @@ test("spread and targetFrom", () => {
   assert.deepEqual(spread([1, 1], 5, 2), [2, 2]); // capped: the caller's feasibility check catches the shortfall
   assert.equal(targetFrom({ mode: "total", total: 300, perDay: 3, days: 30 }), 300);
   assert.equal(targetFrom({ mode: "rate", total: 0, perDay: 3, days: 30 }), 90);
+});
+
+test("buildPlan: the owner's content-type picks and post length shape the whole plan", () => {
+  const only = (types: string[], length: "auto" | "short" | "long" = "auto") => {
+    const content = onlyTypes(setup.config, types, 40, length);
+    return buildPlan({ goal: goal({ targetPosts: 40 }), cfg: cfg({ maxPostsPerDay: 4 }), accounts, tz: "Asia/Jakarta", seed: 3, content, angles: setup.angles, variants: 3 });
+  };
+  assert.deepEqual([...new Set(only(["question"]).map((p) => p.contentType))], ["question"]);
+  assert.deepEqual([...new Set(only(["question", "hot_take"]).map((p) => p.contentType))].sort(), ["hot_take", "question"]);
+  // A short length drops thread types from the mix.
+  assert.ok(!only([], "short").some((p) => isThreadType(setup.config, p.contentType)));
 });

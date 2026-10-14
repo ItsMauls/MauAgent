@@ -801,3 +801,125 @@ Bulk text-post campaigns for X and Threads (1 to `AUTOMATION_MAX_POSTS`, default
   - A real generation run: by design, no paid or free LLM call was made; the owner runs the 10-post pilot.
   - The pages in a browser. The dev server still holds the old Prisma client: stop it, run `npx prisma generate`, and
     restart it (and the Inngest dev server) before the pilot.
+
+### Navigation and roles in the flow (14 Oct 2026, owner)
+- **Campaigns is a submenu of Boards, not a menu of its own.** Boards → Campaigns lists the automation campaigns and has
+  the one Create campaign button, which only offers an automation campaign. The video Campaign list, the brief and the
+  Approval page still exist at their old URLs (no link was broken); only the sidebar entry and the video create option
+  were removed.
+- **Platforms are one list, `AUTOMATION_PLATFORMS` (src/lib/automation/config.ts):** X and Threads for now. A campaign
+  can mix platforms; Instagram and TikTok need a video generator and their own QC rules, so they are not listed yet.
+  The form, planner, worker and account picker read the list.
+- **The Account Manager receives the command first.** On Start pilot, `ensureStrategy` (one call per campaign, role
+  `accountManager`, idemKey `auto:<id>:brief`, spend linked to the campaign) expands the form into a `CampaignBrief`:
+  objective, audience insight, tone, and per pillar a focus, 2-8 angles and things to avoid, plus campaign-wide
+  "never" items. It is stored in `AutomationCampaign.strategy` (migration `20261014030000_automation_strategy`) and
+  runs before any slot is claimed. A cap that stops it pauses the campaign (`quota`); other errors retry through Inngest.
+- **How the brief reaches the other agents** (`briefFor`): the writer's objective becomes the expanded objective + the
+  pillar focus + audience insight + tone; the avoid list is the campaign's "never" items + the pillar's; and when the
+  plan has no angles for a pillar (angles.yaml only covers a few topics) the pillar's angles rotate by slot. The audience
+  field is left as the owner typed it, because the language rule reads it. QC and the judge use the same context. A
+  campaign without a brief (or a pillar the model dropped) is written from the form fields, as before.
+- **Flow on the campaign Overview:** You → Account Manager → Planner (code) → Socmed Specialist → Text judge → Post QC →
+  You (review) → Socmed Officer / Buffer (phase 3). Each step names its role (linked to its Boards page where one
+  exists), a state and what it has produced; the Account Manager step opens the brief the team works from.
+- **Not verified:** a real brief call (no LLM call was made). The column, loading and the whole path into the writer are
+  covered by 5 new tests and a DB probe.
+
+### Personal or brand, and more precise choices in the form (14 Oct 2026, owner)
+- **Personal vs brand** (`Goal.kind`, default personal, so older campaigns still parse). A personal account is first person
+  and written in the owner's writing voice. A brand names itself (required), may add what it offers and a brand voice,
+  speaks as "we", and is **not** written in the owner's personal voice (the worker passes no voice for it; the brand
+  voice goes in the brief). The brand name goes to the writer as the account/brand, the offer to promo CTAs.
+- **Chosen, not typed:** goals (8 chips), audience (10 chips), tone (9 chips, up to 4), content types (cards from
+  `content-types.yaml`), post length, hashtag policy (+ custom tags), CTA, quiet days, review policy. The chips are
+  joined into the existing objective and audience fields; free text stays for anything else. No migration (JSON column).
+- **They reach the whole team:** the Account Manager prompt gets account kind, brand details, tones, types, length and
+  the avoid list. The planner honours the type picks and length (`onlyTypes`, the same function the text batches use:
+  a single pick repeats that type, short/medium drop threads). The writer gets length, hashtags, brand and the combined
+  avoid list. QC and the text judge read the same brief.
+- **Not done:** the visual restyle of the campaign pages "like the reference". No reference was attached to the request,
+  so the layout keeps the existing card style. Send the screenshot and the pages can be restyled to match.
+
+### Pay as you go and number fields (14 Oct 2026)
+- **Budget has two modes:** a fixed campaign cap, or **pay as you go**. Pay as you go is stored as `budgetCapUsd = 0`
+  (`PAY_AS_YOU_GO`, no migration) and means no campaign cap: the worker passes an infinite cap to `budgetGate`, so only
+  the monthly caps (Settings, all providers; Settings → AI) still stop a campaign, and they are checked before every
+  post. The Overview shows spend without a bar, warning or over-cap estimate; the list and Settings tab say "pay as you
+  go". A paused-for-budget state can only occur on a fixed cap.
+- **Number fields can be cleared** (`NumInput`): they keep the typed text, so an empty box is allowed while editing, and
+  a value outside the range snaps to the nearest limit on blur. The old fields turned "" into 0 and showed it, so the
+  0 could not be deleted. Applied to every number field of the new-campaign form and the budget-cap field.
+
+### Campaigns list: stats, filters and three views (14 Oct 2026, owner)
+- The Campaigns page (Boards → Campaigns) follows the layout of the video campaign list: four stat cards (Total
+  Campaigns, Awaiting Your Review = texts waiting for you, In Progress = piloting / awaiting scale / running, Spend
+  This Month = all automation spend), then a toolbar with stage tabs (All, Needs review, Draft, Active, Paused, Done,
+  each with its count), search, an account filter (personal / brand), a sort, and a **Grid / Kanban / Table** switch.
+- Everything is in the URL (`?view=&tab=&q=&kind=&sort=`) and rendered on the server, like the video list, so a view
+  can be linked and reloaded. Stats always cover all campaigns; the filters only change what is listed ("Showing x of
+  y" with a clear link). The list reads up to 200 campaigns and filters them in memory.
+- Kanban columns: Draft, Pilot (piloting + awaiting scale), Running, Paused, Done (completed + cancelled). Cards show
+  progress (written / approved of the texts planned), the date range, spend (or "pay as you go") and badges for posts
+  to review and the pause reason.
+- Counts are texts, not rows: a text has one row per account, so rows are divided by the number of accounts.
+- **Not rendered or clicked through:** the page needs a login and `next/link` cannot be rendered outside Next, so this
+  was only typechecked and linted.
+
+### AI Agent Assistant, persona file and workflow status on the new-campaign page (14 Oct 2026, owner)
+- **AI Agent Assistant** (top of `/campaigns/automation/new`): the owner writes the campaign in plain words and presses
+  Fill the form. One call to the Account Manager role (`assistFill`, tunable in `/settings/ai`, costed like every call,
+  idemKey `assist:<uuid>`, subject to the AI caps) returns every field it can. It may only pick from the form's own
+  option lists (objectives, audience, tones, content types, length, hashtags, CTA), which are shared constants now
+  (`OBJECTIVES`, `AUDIENCE_TRAITS`, `TONES`), and leaves out what was not said (empty / null = keep the form's value).
+  `toPatch` keeps only usable values: valid dates in order, real links, a total over a rate, at most 4 tones, only
+  content types that are on offer, no brand fields for a personal account. Today's date is in the prompt so "next week"
+  resolves. The assistant fills the form only; nothing is created until the owner reviews it and presses Create.
+- **Account persona file (.md / .txt):** read in the browser (max 200 KB), the first 6,000 characters are kept
+  (`PERSONA_MAX`, with a notice when cut), shown as a removable chip, and stored on the campaign (`Goal.persona`, no
+  migration). It is used three ways: the assistant reads it to choose kind, brand, tone, audience and pillars; the
+  Account Manager's brief treats it as the account's voice; and every post is written and QC'd with it as the voice
+  guide, **replacing** the owner's saved voice (and the brand's voice) for that campaign. It is data, never
+  instructions. Cost: up to ~1.5k tokens extra per writer and QC call, so keep it short.
+- **Workflow agents card** (right column, above the Check card): the same flow component as the campaign page in
+  compact form: AI Agent Assistant (waiting / working / done / failed with its note) → Account Manager → Planner (done
+  when the plan is feasible, otherwise what it needs) → Socmed Specialist (says whose voice it will use) → Post QC →
+  You. The later agents show "Waiting" because they only start with the pilot.
+- **Number fields** now also accept values set from outside (the assistant), without reformatting what the owner types.
+- **Not verified:** a real assistant call (no LLM call was made) and the page in a browser. The pure parts (schema,
+  prompt, patch, persona rules) have 7 tests.
+
+### The assistant fills every point (14 Oct 2026, owner)
+- **Reverses "only fill what was said".** The AI Agent Assistant now fills **every** section of the form, down to the
+  budget: account type and brand, accounts, goals, audience, pillars, tone, content types, length, hashtags, CTA, link,
+  avoid list, dates, total, daily limit, active hours, minimum gap, quiet days, KPI, review policy and forced types, QC
+  threshold, variants, horizon, budget mode and cap, warning %. What the client did not say, it chooses for the audience
+  and goal and lists as "What the assistant chose for you" under the card. It still never invents a link, a brand
+  detail or a KPI number: the link stays empty and the KPI stays off unless the client gave one.
+- **It sees the available accounts** (id and label) and picks from them; unknown ids fall back to all accounts.
+- **The answer is normalised so Create works** (`toPatch`): dates valid, in order, start after today (else tomorrow,
+  30 days), hours and limits in range, never every weekday quiet, QC threshold 0.5-1 in steps of 0.05, only content
+  types on offer. **The plan always fits:** if the total does not fit the days, the daily limit is raised first (up to
+  24), then the total is lowered, each with a note. A check against the real database created a campaign from such an
+  answer (a request for 200 posts in 9 days became 72, because 90-minute gaps inside 14 active hours allow 9 a day).
+- A total is always used (a rate the client gave is converted by the assistant to rate × posting days).
+
+### Flow order and the team discussion (14 Oct 2026, owner)
+- **Order is You → Planner → Account Manager → Socmed Specialist → text judge → Post QC → You (review)**, on the campaign
+  page and in the new-campaign card (Assistant → Planner → Account Manager → …). The plan is made when the campaign is
+  created, and the Account Manager only briefs the team when the pilot starts, so the order now matches what happens.
+- **Pilot = a team discussion.** When the pilot starts, the agents talk to each other on the campaign Overview ("Team
+  discussion", live while the brief is pending or posts are being written, refreshed every 3 s):
+  1. the Account Manager reads the command, writes the brief and posts its summary (objective, audience, tone, each
+     pillar with its focus and number of angles) and hands it over;
+  2. the Socmed Specialist acknowledges, then for each post shows its drafts (the existing writer log);
+  3. the rule and judge checks show what they found (existing log);
+  4. Post QC says "Rule check passed / failed", asks for a second opinion when a post is borderline, and gives its
+     verdict, score(s), confidence and decision (approved automatically, or sent to you with the reasons).
+  A failed rule shows the post going back to the Specialist. It is the real pipeline log, not generated chatter.
+- **Storage:** `AutomationMessage` (migration \`20261014040000_automation_messages\`), append-only so agents that run in
+  parallel never overwrite each other, deleted with the campaign. The page shows the latest 60 lines. Nothing prunes old
+  lines yet: about 8-10 lines per post.
+- **Known quirks:** the Specialist's and the checks' lines come from the shared text-post writer and are still in
+  casual Indonesian ("Oke, post 4…"); the new lines (Account Manager, hand-offs, Post QC) are English. A retried Inngest
+  step can repeat its lines. Both can be tidied if wanted.

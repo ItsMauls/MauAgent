@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { inngest } from "@/lib/inngest";
 import { db } from "@/lib/db";
-import { claimWindow, finishPilotIfDone, processSlot, releaseSlots } from "@/lib/automation/worker";
+import { claimWindow, ensureStrategy, finishPilotIfDone, processSlot, releaseSlots } from "@/lib/automation/worker";
 import { GENERATING } from "@/lib/automation/status";
 
 export const automationTopup = inngest.createFunction(
@@ -15,6 +15,8 @@ export const automationTopup = inngest.createFunction(
     const one = z.object({ campaignId: z.string() }).safeParse(event.data).data?.campaignId;
     const ids = one ? [one] : await step.run("campaigns", async () => (await db.automationCampaign.findMany({ where: { status: { in: GENERATING } }, select: { id: true } })).map((c) => c.id));
     for (const id of ids) {
+      // The Account Manager briefs the team first; a cap that stops it pauses the campaign before anything is claimed.
+      if (!(await step.run(`brief-${id}`, () => ensureStrategy(id)))) continue;
       const claimed = await step.run(`claim-${id}`, async () => ({ at: Date.now(), chunks: await claimWindow(id) }));
       if (claimed.chunks.length)
         await step.sendEvent(`chunks-${id}`, claimed.chunks.map((slots) => ({ name: "automation/chunk", id: `chunk:${id}:${slots[0]}:${claimed.at}`, data: { campaignId: id, slots } })));

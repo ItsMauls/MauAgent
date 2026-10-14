@@ -7,13 +7,15 @@ import { AiBudgetError, generateStructured } from "@/lib/ai/generate";
 import { budgetGate, monthSpent } from "@/lib/cost";
 import { dbDeps } from "@/lib/content/generate";
 import { writeFeedback } from "@/lib/boards/feedback";
+import { getPersona } from "@/lib/agents/persona";
 import { getSettings } from "@/lib/settings";
 import type { ContentType, Cta } from "@/lib/agents/schemas";
-import { GenerationConfig, Goal, QcConfig, ReviewPolicy } from "./config";
-import { runPost } from "./pipeline";
+import { GenerationConfig, Goal, isPayAsYouGo, QcConfig, ReviewPolicy, type AutomationPlatform } from "./config";
+import { runPost, type Say } from "./pipeline";
 import { qcRules } from "./qc";
 import { QcVerdict } from "./qcJudge";
 import { allowedFromAuto, GENERATING } from "./status";
+import { CampaignBrief, strategyPrompt } from "./strategy";
 import { estimatePostUsd } from "./store";
 
 const DAY = 86_400_000;
@@ -33,9 +35,41 @@ const pause = (id: string, reason: AutomationPause) =>
 export const loadCampaign = async (id: string) => {
   const c = await db.automationCampaign.findUniqueOrThrow({ where: { id } });
   return {
-    ...c, goal: Goal.parse(c.goal), policy: ReviewPolicy.parse(c.reviewPolicy), qc: QcConfig.parse(c.qcConfig), gen: GenerationConfig.parse(c.generationConfig),
+    ...c, strategy: CampaignBrief.safeParse(c.strategy).data ?? null, goal: Goal.parse(c.goal), policy: ReviewPolicy.parse(c.reviewPolicy), qc: QcConfig.parse(c.qcConfig), gen: GenerationConfig.parse(c.generationConfig),
   };
 };
+
+/** One line of the team's discussion. Never fails the work: a lost message is only a gap in the chat. */
+const sayFor = (campaignId: string): Say => async (who, text, slot) => {
+  await db.automationMessage.create({ data: { automationCampaignId: campaignId, who, text: text.slice(0, 1500), slot: slot ?? null } }).catch(() => {});
+};
+
+/**
+ * The Account Manager receives the owner's command and expands it into the campaign brief every later agent works
+ * from. One call per campaign, stored once (a retry reuses the ledger's stored output). Returns false when a cap
+ * stopped it (the campaign is then paused).
+ */
+export async function ensureStrategy(id: string): Promise<boolean> {
+  const c = await loadCampaign(id);
+  if (c.strategy) return true;
+  const [{ persona }, s] = await Promise.all([getPersona("accountManager"), db.setting.findUnique({ where: { id: "default" }, select: { writingVoice: true } })]);
+  const say = sayFor(id);
+  await say("accountManager", `I have the command: ${c.goal.targetPosts} posts for ${c.goal.audience}, pillars: ${c.goal.pillars.join(", ")}. Writing a detailed brief for the team.`);
+  try {
+    const out = await generateStructured("accountManager", strategyPrompt(c.goal, persona, s?.writingVoice ?? null), CampaignBrief, {
+      idemKey: `auto:${id}:brief`, automationCampaignId: id, step: "campaign-brief",
+    });
+    await db.automationCampaign.updateMany({ where: { id, strategy: { equals: Prisma.DbNull } }, data: { strategy: out.payload as Prisma.InputJsonValue } });
+    const b = out.payload;
+    await say("accountManager", `The brief is ready. Objective: ${b.objective}\nAudience: ${b.audienceInsight}\nTone: ${b.toneNotes}\n${b.pillars.map((p) => `• ${p.pillar}: ${p.focus} (${p.angles.length} angles)`).join("\n")}${b.mustAvoid.length ? `\nNever: ${b.mustAvoid.join("; ")}` : ""}\nHanding it to the Socmed Specialist.`);
+    await say("socmedSpecialist", "Got the brief. I will write the pilot posts from it, in the account's voice, and pass each one to Post QC.");
+    return true;
+  } catch (e) {
+    if (!(e instanceof AiBudgetError)) throw e;
+    await pause(id, "quota");
+    return false;
+  }
+}
 
 /**
  * Claims the slots to generate now (planned → generating, atomically) and splits them into chunks. The pilot takes its
@@ -71,7 +105,7 @@ export async function avgSlotUsd(id: string, firstAccount: string) {
 async function budgetStop(c: Awaited<ReturnType<typeof loadCampaign>>): Promise<AutomationPause | null> {
   const [spent, month, s, avg] = await Promise.all([automationSpent(c.id), monthSpent(), getSettings(), avgSlotUsd(c.id, c.goal.accountIds[0])]);
   const estUsd = avg ?? (await estimatePostUsd()) ?? 0;
-  const g = budgetGate({ estUsd, spentUsd: spent, capUsd: Number(c.budgetCapUsd), monthSpentUsd: month, monthCapUsd: Number(s.monthlyBudgetUsd) });
+  const g = budgetGate({ estUsd, spentUsd: spent, capUsd: isPayAsYouGo(Number(c.budgetCapUsd)) ? Infinity : Number(c.budgetCapUsd), monthSpentUsd: month, monthCapUsd: Number(s.monthlyBudgetUsd) });
   if (!g.blocked) return null;
   return g.monthUsd > Number(s.monthlyBudgetUsd) ? "quota" : "budget";
 }
@@ -117,12 +151,15 @@ export async function processSlot(id: string, slot: number, manual = false): Pro
     out = await runPost(
       {
         campaignId: id, slot, type: head.contentType as ContentType, angles: head.angles, cta: head.cta as Cta | null, pillar: head.pillar ?? head.topicSeed,
-        pilot: head.pilot, retryCount: head.retryCount, platforms: [...new Set(rows.map((r) => r.platform))] as ("twitter" | "threads")[],
-        goal: c.goal, policy: c.policy, qc: c.qc, gen: c.gen, recent,
+        pilot: head.pilot, retryCount: head.retryCount, platforms: [...new Set(rows.map((r) => r.platform))] as AutomationPlatform[],
+        goal: c.goal, policy: c.policy, qc: c.qc, gen: c.gen, recent, brief: c.strategy,
       },
       { idemKey: base, automationCampaignId: id, step: "automation" },
       {
-        content: { ...dbDeps, recentTexts: async (days) => [...corpus, ...(await dbDeps.recentTexts(days))] },
+        // The account persona file, when uploaded, is the voice. Otherwise a personal account is written in the owner's
+        // voice and a brand speaks in its own (brandVoice in the brief).
+        say: sayFor(id),
+        content: { ...dbDeps, note: async (n) => sayFor(id)(n.who, n.text.replace(/post (\d+) dari \d+/, "post $1"), n.post ?? slot), voice: c.goal.persona ? async () => c.goal.persona! : c.goal.kind === "personal" ? dbDeps.voice : async () => null, recentTexts: async (days) => [...corpus, ...(await dbDeps.recentTexts(days))] },
         rules: qcRules,
         qcJudge: (prompt, ctx) => generateStructured("postQc", prompt, QcVerdict, { ...ctx, config: { temperature: ctx.temperature } }),
       },

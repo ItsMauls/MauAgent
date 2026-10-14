@@ -3,7 +3,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { inngest } from "@/lib/inngest";
-import { createAutomationCampaign } from "@/lib/automation/store";
+import { randomUUID } from "node:crypto";
+import { generateStructured } from "@/lib/ai/generate";
+import { ASSIST_MAX_CHARS, assistPrompt, AssistFill, toPatch } from "@/lib/automation/assistant";
+import { PERSONA_MAX } from "@/lib/automation/config";
+import { contentSetup } from "@/lib/content/config";
+import { automationAccounts, createAutomationCampaign } from "@/lib/automation/store";
+import { automationEnv } from "@/lib/ai/env";
+import { dayKey } from "@/lib/boards/agenda";
+import { getSettings } from "@/lib/settings";
+import { PLATFORM_LABEL } from "@/lib/automation/config";
 import { decideSlot, requeueSlot, setAutomationStatus } from "@/lib/automation/worker";
 
 const page = (id: string) => revalidatePath(`/campaigns/automation/${id}`);
@@ -78,4 +87,26 @@ export async function regenerateSlot(id: string, slot: number) {
   const round = await requeueSlot(id, z.number().int().min(0).parse(slot));
   if (round !== null) await inngest.send({ name: "automation/chunk", id: `regen:${id}:${slot}:${round}`, data: { campaignId: id, slots: [slot], manual: true } });
   page(id);
+}
+
+const AssistInput = z.object({ text: z.string().trim().min(1, "Describe the campaign first").max(ASSIST_MAX_CHARS), persona: z.string().max(PERSONA_MAX * 4).optional() });
+
+/**
+ * The AI Agent Assistant: one Account Manager call that reads the owner's plain-words description (and the persona
+ * file, if any) and returns the form fields it could fill. Costed like every call and subject to the AI caps; it makes
+ * nothing and publishes nothing, the owner still reviews the form.
+ */
+export async function assistFill(raw: z.input<typeof AssistInput>) {
+  const { text, persona } = AssistInput.parse(raw);
+  const [accounts, { timezone }] = await Promise.all([automationAccounts(), getSettings()]);
+  const ctx = {
+    today: dayKey(new Date(), timezone), maxPosts: automationEnv().AUTOMATION_MAX_POSTS,
+    types: Object.entries(contentSetup().config.types).flatMap(([t, c]) => (c && c.weight > 0 ? [t] : [])),
+    accounts: accounts.map((a) => ({ id: a.id, label: `${PLATFORM_LABEL[a.platform] ?? a.platform} @${a.handle}` })),
+  };
+  const out = await generateStructured(
+    "accountManager", assistPrompt(text, persona?.trim() ? persona.trim() : null, ctx), AssistFill,
+    { idemKey: `assist:${randomUUID()}`, step: "campaign-assistant" },
+  );
+  return { ...toPatch(out.payload, ctx), costUsd: out.costUsd };
 }

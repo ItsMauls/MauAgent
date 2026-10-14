@@ -2,6 +2,7 @@
 import type { AutomationStatus } from "@prisma/client";
 import { useState } from "react";
 import { ErrorText, useAction } from "../../../ui";
+import { NumInput } from "../num-input";
 import { cancelAutomation, decidePost, generateNow, pauseAutomation, regenerateSlot, resumeAutomation, scaleUp, setBudgetCap, startPilot } from "../actions";
 
 /** Lifecycle buttons for the campaign's current status. */
@@ -28,7 +29,7 @@ export function Controls({ id, status, pauseReason, capUsd }: { id: string; stat
           </p>
           {pauseReason === "budget" && (
             <>
-              <label><span className="label">Campaign cap (US$)</span><input type="number" min={0.01} step={0.01} className="input w-32" value={cap} onChange={(e) => setCap(Number(e.target.value))} /></label>
+              <label><span className="label">Campaign cap (US$)</span><NumInput min={0.01} step={0.01} className="input w-32" value={cap} onChange={(n) => setCap(n)} /></label>
               {btn("Save cap", () => setBudgetCap(id, cap))}
             </>
           )}

@@ -17,7 +17,17 @@ const menuOf = (menu: (typeof FEATURES)[number]["menu"], label: string, icon: st
 
 // Items are added in the stage that builds their page (no links to pages that don't exist yet). Boards is the home page.
 const items: Item[] = [
-  { href: "/boards", label: "Boards", icon: "dashboard" },
+  {
+    href: "/boards",
+    label: "Boards",
+    icon: "dashboard",
+    // Campaigns live under Boards: there is no separate Campaigns menu.
+    children: [
+      { href: "/campaigns/automation", label: "Campaigns", icon: "campaign" },
+      { href: "/approval", label: "Approval", icon: "fact_check" },
+      ...feat("campaigns"),
+    ],
+  },
   { href: "/boards/roles", label: "Agent Roles", icon: "account_tree" },
   {
     href: "/trends",
@@ -32,16 +42,6 @@ const items: Item[] = [
   { href: "/brief", label: "Briefs", icon: "auto_awesome", children: feat("briefs") },
   menuOf("posts", "Posts", "edit_note"),
   menuOf("studio", "Studio", "movie_creation"),
-  {
-    href: "/campaigns",
-    label: "Campaigns",
-    icon: "campaign",
-    children: [
-      { href: "/approval", label: "Approval", icon: "fact_check" },
-      { href: "/campaigns/automation", label: "Automation", icon: "autorenew" },
-      ...feat("campaigns"),
-    ],
-  },
   { href: "/analytics", label: "Analytics", icon: "monitoring" },
   { href: "/connections", label: "Connections", icon: "hub" },
 ];

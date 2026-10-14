@@ -687,12 +687,15 @@ model AutomationCampaign {
   reviewPolicy     Json
   qcConfig         Json
   generationConfig Json
+  // The Account Manager's expansion of the goal into a detailed brief (src/lib/automation/strategy.ts); null until the pilot starts.
+  strategy         Json?
   // Planner RNG seed: the same goal, config and seed give the same plan.
   seed             Int
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   posts            CampaignPost[]
   costs            CostEntry[]
+  messages         AutomationMessage[]
 
   @@index([status])
 }
@@ -744,4 +747,20 @@ model CampaignPost {
   @@index([automationCampaignId, status])
   @@index([automationCampaignId, scheduledAt])
   @@index([socialAccountId, scheduledAt])
+}
+
+// The team's discussion while a campaign works: the Account Manager's brief, the Socmed Specialist's drafts, the rule and
+// judge checks and Post QC's verdicts. Append-only (agents run in parallel), shown live on the campaign page.
+model AutomationMessage {
+  id                   String             @id @default(cuid())
+  automationCampaignId String
+  automationCampaign   AutomationCampaign @relation(fields: [automationCampaignId], references: [id], onDelete: Cascade)
+  // The post (slot) the message is about, null for campaign-level messages like the brief.
+  slot                 Int?
+  // accountManager | socmedSpecialist | qc (rule checks and text judge) | postQc
+  who                  String
+  text                 String
+  createdAt            DateTime           @default(now())
+
+  @@index([automationCampaignId, createdAt])
 }

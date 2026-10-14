@@ -2,13 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CampaignPostStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { GenerationConfig, Goal, QcConfig, ReviewPolicy } from "@/lib/automation/config";
+import { GenerationConfig, Goal, isPayAsYouGo, QcConfig, ReviewPolicy } from "@/lib/automation/config";
 import { estimatePostUsd } from "@/lib/automation/store";
 import { agreement, automationSpent, avgSlotUsd } from "@/lib/automation/worker";
 import { getSettings } from "@/lib/settings";
 import { LiveRefresh } from "../../[id]/live";
 import { CampaignStatusPill, platformName, PostStatusPill } from "../parts";
 import { Controls, PostActions } from "./controls";
+import { CampaignFlow, type FlowStep } from "./flow";
+import { Discussion } from "./discussion";
+import { Modal } from "@/app/boards/modal";
+import { CampaignBrief } from "@/lib/automation/strategy";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +62,7 @@ export default async function AutomationCampaignPage({ params, searchParams }: {
       </div>
       <p className="text-ink-2">{goal.targetPosts} posts · {goal.startDate} → {goal.endDate} · {goal.pillars.join(", ")}</p>
       <Controls id={c.id} status={c.status} pauseReason={c.pauseReason} capUsd={Number(c.budgetCapUsd)} />
-      <LiveRefresh active={busy > 0} />
+      <LiveRefresh active={busy > 0 || (["piloting", "running"].includes(c.status) && !c.strategy)} />
 
       <nav aria-label="Campaign sections" className="flex flex-wrap gap-2">
         {TABS.map(([t, label]) => (
@@ -69,12 +73,12 @@ export default async function AutomationCampaignPage({ params, searchParams }: {
         ))}
       </nav>
 
-      <section className="card p-8">
-        {tab === "overview" && <Overview id={c.id} goal={goal} capUsd={Number(c.budgetCapUsd)} warnAtPct={c.warnAtPct} qc={QcConfig.parse(c.qcConfig)} />}
+      {tab === "overview" && <Overview id={c.id} goal={goal} status={c.status} brief={CampaignBrief.safeParse(c.strategy).data ?? null} capUsd={Number(c.budgetCapUsd)} warnAtPct={c.warnAtPct} qc={QcConfig.parse(c.qcConfig)} />}
+      {tab !== "overview" && <section className="card p-8">
         {tab === "plan" && <PlanTab id={c.id} page={Math.max(1, Number(sp.page) || 1)} status={sp.status} />}
-        {tab === "settings" && <SettingsTab c={c} />}
+        {tab === "settings" && <SettingsTab c={c} goal={goal} />}
         {LATER[tab] && <p className="text-ink-2">{LATER[tab]}</p>}
-      </section>
+      </section>}
     </div>
   );
 }
@@ -82,7 +86,7 @@ export default async function AutomationCampaignPage({ params, searchParams }: {
 const ORDER: CampaignPostStatus[] = ["planned", "generating", "qc", "needs_review", "approved", "scheduled", "published", "failed", "rejected", "skipped", "cancelled"];
 const usd = (n: number) => `US$${n.toFixed(n < 1 ? 4 : 2)}`;
 
-async function Overview({ id, goal, capUsd, warnAtPct, qc }: { id: string; goal: Goal; capUsd: number; warnAtPct: number; qc: QcConfig }) {
+async function Overview({ id, goal, status, brief, capUsd, warnAtPct, qc }: { id: string; goal: Goal; status: string; brief: CampaignBrief | null; capUsd: number; warnAtPct: number; qc: QcConfig }) {
   const first = goal.accountIds[0];
   const [byStatus, spent, measured, estimate, agree, auto, perDay, pilot] = await Promise.all([
     // Per slot: every row of a slot shares its status until publishing, so count slots through one account.
@@ -95,22 +99,60 @@ async function Overview({ id, goal, capUsd, warnAtPct, qc }: { id: string; goal:
     db.$queryRaw<{ day: string; usd: number }[]>`SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day, SUM(usd)::float AS usd FROM "CostEntry" WHERE "automationCampaignId" = ${id} GROUP BY 1 ORDER BY 1 DESC LIMIT 14`,
     db.campaignPost.findMany({ where: { automationCampaignId: id, socialAccountId: first, pilot: true }, orderBy: { slot: "asc" } }),
   ]);
-  const pct = capUsd ? (spent / capUsd) * 100 : 0;
+  const payg = isPayAsYouGo(capUsd);
+  const pct = payg ? 0 : (spent / capUsd) * 100;
   const count = (s: CampaignPostStatus) => byStatus.find((r) => r.status === s)?._count ?? 0;
   const remaining = count("planned") + count("generating") + count("qc");
   const perPost = measured ?? estimate;
   const generated = byStatus.reduce((n, r) => n + (["planned", "generating", "qc", "cancelled"].includes(r.status) ? 0 : r._count), 0);
   const pilotDone = pilot.filter((p) => !["planned", "generating", "qc"].includes(p.status));
+  // The flow: who is responsible for each step, in the order the command travels.
+  const live = ["piloting", "running"].includes(status);
+  const writing = count("generating") + count("qc");
+  const reviewing = count("needs_review");
+  const flow: FlowStep[] = [
+    { role: "You", icon: "person", state: "done", does: "Give the command: goal, audience, pillars, schedule limits, review policy and budget.", note: `${goal.targetPosts} posts over ${goal.pillars.length} pillar${goal.pillars.length === 1 ? "" : "s"}` },
+    { role: "Planner (code, no LLM)", icon: "event_note", state: "done", does: "Fixes every slot before writing: time per account, content type, angles, pillar and CTA.", note: "Plan ready, see the Plan tab" },
+    {
+      role: "Account Manager", slug: "account-manager", icon: "handshake", does: "Receives the command first and expands it into a detailed brief: audience insight, tone, and a focus and angles per pillar.",
+      state: brief ? "done" : live ? "active" : "waiting",
+      note: brief ? `Brief ready: ${brief.pillars.length} pillar${brief.pillars.length === 1 ? "" : "s"} detailed` : live ? "Writing the brief…" : "Starts when you press Start pilot",
+    },
+    { role: "Socmed Specialist", slug: "socmed-specialist", icon: "campaign", does: "Writes the variants of each post from the brief, in your voice, and keeps the best.", state: writing ? "active" : generated ? "done" : "waiting", note: generated ? `${generated} posts written${writing ? `, ${writing} in progress` : ""}` : undefined },
+    { role: "Text judge", icon: "balance", does: "Scores the variants and rejects made-up words or broken sentences.", state: writing ? "active" : generated ? "done" : "waiting" },
+    { role: "Post QC", slug: "post-qc", icon: "rule", does: "Strict rules plus an independent review. Computes confidence and decides: regenerate, auto-approve or send to you.", state: writing ? "active" : generated ? "done" : "waiting", note: generated ? `${auto} auto-approved, ${reviewing} waiting for you` : undefined },
+    { role: "You (review)", icon: "fact_check", does: "Approve or reject what QC was not confident about. Every pilot post comes here.", state: reviewing ? "active" : generated ? "done" : "waiting", note: reviewing ? `${reviewing} post${reviewing === 1 ? "" : "s"} waiting` : undefined },
+  ];
   return (
-    <div className="space-y-8">
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <section className="card space-y-8 p-8">
+      <div className="relative">
+        <details open>
+          <summary className="label cursor-pointer select-none">Flow and who is responsible</summary>
+          <div className="mt-2"><CampaignFlow steps={flow} horizontal /></div>
+        </details>
+        {brief && (
+          <div className="absolute right-0 top-0">
+            <Modal title="The brief the team works from" className="text-sm font-medium text-brand hover:underline" trigger="Read the brief">
+              <p><b>Objective:</b> {brief.objective}</p>
+              <p><b>Audience:</b> {brief.audienceInsight}</p>
+              <p><b>Tone:</b> {brief.toneNotes}</p>
+              {brief.pillars.map((p) => (
+                <div key={p.pillar}><b>{p.pillar}:</b> {p.focus}<div className="text-ink-2">Angles: {p.angles.join(" · ")}{p.avoid.length ? ` · Avoid: ${p.avoid.join(", ")}` : ""}</div></div>
+              ))}
+              {brief.mustAvoid.length > 0 && <p><b>Never:</b> {brief.mustAvoid.join("; ")}</p>}
+            </Modal>
+          </div>
+        )}
+      </div>
       <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Spend" value={usd(spent)} sub={`of ${usd(capUsd)}`} bar={pct} warn={pct >= warnAtPct} />
+        <Stat label="Spend" value={usd(spent)} sub={payg ? "pay as you go, no campaign cap" : `of ${usd(capUsd)}`} bar={payg ? undefined : pct} warn={pct >= warnAtPct} />
         <Stat label="Cost per post" value={perPost == null ? "—" : usd(perPost)} sub={measured != null ? "measured (writing + QC)" : "estimate"} />
         <Stat label="Still to generate" value={String(remaining)} sub={perPost == null ? "" : `≈ ${usd(remaining * perPost)}${measured == null ? " (estimate)" : ""}`} />
         <Stat label="QC agreement" value={agree.rate == null ? "—" : `${Math.round(agree.rate * 100)}%`} sub={`${agree.agreed}/${agree.total} owner decisions`} />
       </div>
       {pct >= warnAtPct && <p role="status" className="rounded-xl bg-amber-soft p-3 text-sm font-medium text-amber-800">Spend is at {Math.round(pct)}% of the cap{pct >= 100 ? ": generation is stopped." : "."}</p>}
-      {perPost != null && spent + remaining * perPost > capUsd && (
+      {!payg && perPost != null && spent + remaining * perPost > capUsd && (
         <p className="rounded-xl bg-amber-soft p-3 text-sm text-amber-800">
           At {usd(perPost)} per post the remaining {remaining} posts need about {usd(spent + remaining * perPost)} in total, above the {usd(capUsd)} cap: generation will pause at the cap.
         </p>
@@ -121,7 +163,7 @@ async function Overview({ id, goal, capUsd, warnAtPct, qc }: { id: string; goal:
         <div className="flex flex-wrap gap-3">
           {ORDER.filter(count).map((s) => <span key={s} className="flex items-center gap-1.5"><PostStatusPill status={s} /><b className="text-sm">{count(s)}</b></span>)}
         </div>
-        <p className="mt-2 text-sm text-ink-2">Auto-approved by QC: {auto} of {generated} generated{generated ? ` (${Math.round((auto / generated) * 100)}%)` : ""} · threshold {Math.round(qc.minConfidence * 100)}%</p>
+        <p className="mt-2 text-sm text-ink-2">Auto-approved by QC: {auto} of {generated} generated{generated ? ` (${Math.round((auto / generated) * 100)}%)` : ""} · threshold {Math.round(qc.minConfidence * 100)}%{pilot.length > 0 && ` · pilot ${pilotDone.length}/${pilot.length} written`}</p>
       </div>
 
       {pilot.length > 0 && (
@@ -156,6 +198,10 @@ async function Overview({ id, goal, capUsd, warnAtPct, qc }: { id: string; goal:
           <p className="mt-1 text-xs text-ink-3">A text is written once and cross-posted, so its cost is shared by every account it goes to.</p>
         </div>
       )}
+      </section>
+      <aside className="xl:sticky xl:top-20">
+      <Discussion id={id} live={live && (writing > 0 || !brief)} />
+      </aside>
     </div>
   );
 }
@@ -246,16 +292,21 @@ async function PlanTab({ id, page, status }: { id: string; page: number; status?
   );
 }
 
-function SettingsTab({ c }: { c: { planConfig: unknown; reviewPolicy: unknown; qcConfig: unknown; generationConfig: unknown; seed: number; budgetCapUsd: unknown; warnAtPct: number } }) {
+function SettingsTab({ goal, c }: { goal: Goal; c: { planConfig: unknown; reviewPolicy: unknown; qcConfig: unknown; generationConfig: unknown; seed: number; budgetCapUsd: unknown; warnAtPct: number } }) {
   const review = ReviewPolicy.parse(c.reviewPolicy);
   const qc = QcConfig.parse(c.qcConfig);
   const gen = GenerationConfig.parse(c.generationConfig);
   const items: [string, string][] = [
+    ["Account", goal.kind === "brand" ? `Brand: ${goal.brandName}${goal.brandOffer ? ` · ${goal.brandOffer}` : ""}` : "Personal (your writing voice)"],
+    ["Tone", goal.tones.join(", ") || "not specified"],
+    ["Content types", goal.types.length ? goal.types.join(", ") : "weighted mix of all"],
+    ["Length · hashtags", `${goal.length} · ${goal.hashtags ?? "auto"}`],
+    ["Never mention", goal.avoid || "—"],
     ["Review policy", review.mode === "qc_auto" ? "QC auto-approve" : "Review everything"],
     ["Always reviewed", review.forceReviewTypes.join(", ") || "none"],
     ["QC threshold", `${Math.round(qc.minConfidence * 100)}% · up to ${qc.maxRetries} regenerations · borderline ±${Math.round(qc.borderline * 100)}% gets a second QC sample`],
     ["Generation", `${gen.variantsPerPost} variants · ${gen.horizonDays} days ahead · chunks of ${gen.chunkSize} · pilot ${gen.pilotSize}`],
-    ["Budget", `US$${Number(c.budgetCapUsd).toFixed(2)} · warn at ${c.warnAtPct}%`],
+    ["Budget", isPayAsYouGo(Number(c.budgetCapUsd)) ? "Pay as you go: no campaign cap, the monthly caps in Settings still apply" : `US${Number(c.budgetCapUsd).toFixed(2)} · warn at ${c.warnAtPct}%`],
     ["Schedule", JSON.stringify(c.planConfig)],
     ["Plan seed", String(c.seed)],
   ];

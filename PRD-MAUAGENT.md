@@ -203,6 +203,7 @@ Persona (tone and perspective only) per role, versioned in `AgentProfile` with J
   - Spend is linked through `CostEntry.automationCampaignId`. The video pipeline is untouched.
 - **Cross-posting:** one slot = one generated text, sent to every selected X/Threads account at its own time. The target counts texts.
 - **Form** (one page): accounts, date range, total or rate, pillars, audience, language, CTA, KPI target, schedule limits (max per day, active hours, minimum gap, quiet days), review policy, QC threshold, variants, horizon and budget. A live feasibility check (a shortfall blocks creation and is re-checked on the server) and a cost estimate.
+- **Flow and responsible roles:** the command goes to the **Account Manager** first, who expands it into a detailed brief (audience insight, tone, a focus and angles per pillar) before anything is written. The brief then goes to the Socmed Specialist (writes), the text judge, and Post QC; the owner reviews what QC is not confident about. The Overview shows this flow with each role's state.
 - **Planner** (deterministic, seeded, no LLM):
   - Every slot is fully specified up front: time per account, type, angles, pillar, CTA.
   - Posts are spread evenly over the active hours with a small jitter, and keep the minimum gap per account.
@@ -227,7 +228,7 @@ Persona (tone and perspective only) per role, versioned in `AgentProfile` with J
 
 ### Sidebar
 
-Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikTok, X, Threads) · Briefs (Library) · Campaigns (Approval, Automation, Publishing, Artifacts & results) · Analytics · Connections. Account menu: Accounts, Settings, Log out.
+Boards (Campaigns, Approval, Final delivery, Artifacts & results) · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikTok, X, Threads) · Briefs (Library) · Analytics · Connections. Account menu: Accounts, Settings, Log out.
 
 ---
 

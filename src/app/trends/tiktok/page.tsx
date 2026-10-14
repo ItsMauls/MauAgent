@@ -99,7 +99,7 @@ export default async function TrendsPage({ searchParams }: { searchParams: Promi
   const region = type === "videos" ? settings.videoCountry : settings.countryCode;
 
   return (
-    <div className="max-w-6xl pt-4">
+    <div className="pt-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">TikTok Trends</h1>
@@ -129,7 +129,7 @@ export default async function TrendsPage({ searchParams }: { searchParams: Promi
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
         <section className="card p-5">
           <div className="flex gap-2 border-b border-line">
             {([["hashtags", "Trending hashtags"], ["videos", "Top videos"]] as const).map(([t, label]) => (
@@ -188,7 +188,7 @@ export default async function TrendsPage({ searchParams }: { searchParams: Promi
           )}
         </section>
 
-        <aside className="space-y-4">
+        <aside className="space-y-6 xl:sticky xl:top-20 xl:self-start">
           <section className="card border-orange-100 bg-orange-50/60 p-5">
             <h2 className="flex items-center gap-2 font-bold"><span className="material-symbols-outlined text-brand">psychology</span>AI Breakdown</h2>
             {insights.length ? (

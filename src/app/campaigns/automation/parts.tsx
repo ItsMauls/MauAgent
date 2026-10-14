@@ -1,5 +1,6 @@
 // Small shared bits for the automation campaign pages.
 import type { AutomationStatus, CampaignPostStatus } from "@prisma/client";
+import { PLATFORM_LABEL } from "@/lib/automation/config";
 
 const CAMPAIGN_STYLE: Record<AutomationStatus, string> = {
   draft: "border-line bg-canvas text-ink-2",
@@ -29,4 +30,4 @@ const label = (s: string) => s.replace(/_/g, " ").replace(/^./, (c) => c.toUpper
 
 export const CampaignStatusPill = ({ status }: { status: AutomationStatus }) => <span className={`pill ${CAMPAIGN_STYLE[status]}`}>{label(status)}</span>;
 export const PostStatusPill = ({ status }: { status: CampaignPostStatus }) => <span className={`pill ${POST_STYLE[status]}`}>{label(status)}</span>;
-export const platformName = (p: string) => (p === "twitter" ? "X" : p === "threads" ? "Threads" : p);
+export const platformName = (p: string) => PLATFORM_LABEL[p] ?? p;

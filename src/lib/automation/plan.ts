@@ -7,7 +7,7 @@ import { addDays } from "@/lib/boards/agenda";
 import type { Angles, ContentConfig } from "@/lib/content/config";
 import { ctaPlan, isThreadType, pickAngles, pickType, topicEntry } from "@/lib/content/select";
 import { zonedToIso } from "@/lib/publish";
-import type { Goal, PlanConfig } from "./config";
+import type { AutomationPlatform, Goal, PlanConfig } from "./config";
 
 /** Seeded PRNG (mulberry32): uniform in [0, 1). */
 export function rng(seed: number) {
@@ -88,7 +88,7 @@ export class PlanInfeasible extends Error {
   }
 }
 
-export type PlanAccount = { id: string; platform: "twitter" | "threads" };
+export type PlanAccount = { id: string; platform: AutomationPlatform };
 
 export type PlannedPost = {
   slot: number;

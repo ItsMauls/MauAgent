@@ -41,7 +41,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
       </head>
       <body suppressHydrationWarning className={`${jakarta.variable} antialiased`}>
-        <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 flex-col justify-between gap-4 overflow-y-auto border-r border-line bg-white p-5 shadow-card max-md:hidden">
+        <aside className="fixed left-0 top-0 z-50 flex h-screen w-80 flex-col justify-between gap-4 overflow-y-auto border-r border-line bg-white py-5 pl-5 pr-7 shadow-card max-md:hidden">
           <div className="space-y-6">
             <Link href="/boards" className="flex items-center gap-2 px-1">
               <span className="material-symbols-outlined text-brand">auto_awesome</span>
@@ -51,7 +51,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <NavLinks approvalCount={approvalCount} roles={snapshot ? roleBadges(snapshot) : undefined} connectionAlert={connectionAlert} />
           </div>
         </aside>
-        <div className="md:pl-72">
+        <div className="md:pl-80">
           <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 bg-canvas/80 px-6 backdrop-blur-xl md:px-8">
             <form action="/campaigns" role="search" className="relative min-w-0 flex-1">
               <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">search</span>
@@ -107,7 +107,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               </details>
             </div>
           </header>
-          <main className="max-w-6xl px-6 pb-16 md:px-8">{children}</main>
+          <main className="px-6 pb-16 md:px-8">{children}</main>
         </div>
       </body>
     </html>

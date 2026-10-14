@@ -5,11 +5,11 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { automationEnv } from "@/lib/ai/env";
 import { estimateCallUsd } from "@/lib/ai/generate";
-import { dbDeps } from "@/lib/content/generate";
+import { dbDeps, onlyTypes } from "@/lib/content/generate";
 import { contentSetup } from "@/lib/content/config";
 import { targetAccounts } from "@/lib/publishPlan";
 import { getSettings } from "@/lib/settings";
-import { GenerationConfig, Goal, PlanConfig, QcConfig, ReviewPolicy } from "./config";
+import { GenerationConfig, Goal, isAutomationPlatform, PlanConfig, QcConfig, ReviewPolicy, type AutomationPlatform } from "./config";
 import { buildPlan, capacity, planDays, PlanInfeasible, targetFrom } from "./plan";
 
 /** What the new-campaign form sends. The target comes from a total or a rate; the server derives it again. */
@@ -21,13 +21,13 @@ export const CreateInput = z.object({
   reviewPolicy: ReviewPolicy,
   qcConfig: QcConfig,
   generationConfig: GenerationConfig,
-  budgetCapUsd: z.number().min(0.01).max(100000),
+  budgetCapUsd: z.number().min(0).max(100000), // 0 = pay as you go (PAY_AS_YOU_GO)
   warnAtPct: z.number().int().min(1).max(99).default(80),
 });
 export type CreateInput = z.input<typeof CreateInput>;
 
-/** Buffer channels a campaign can post to: active X and Threads accounts. */
-export const automationAccounts = async () => (await targetAccounts()).filter((a) => a.platform === "twitter" || a.platform === "threads");
+/** Buffer channels a campaign can post to: active accounts on a platform in AUTOMATION_PLATFORMS. */
+export const automationAccounts = async () => (await targetAccounts()).filter((a) => isAutomationPlatform(a.platform));
 
 const DAY = 86_400_000;
 
@@ -43,7 +43,7 @@ export async function createAutomationCampaign(raw: unknown) {
   if (cap.shortfall) throw new PlanInfeasible(cap.shortfall, cap);
   const usable = await automationAccounts();
   const accounts = goal.accountIds.map((id) => usable.find((a) => a.id === id));
-  if (accounts.some((a) => !a)) throw new Error("Pick active X or Threads accounts from Connections");
+  if (accounts.some((a) => !a)) throw new Error("Pick active accounts from Connections");
 
   const setup = contentSetup();
   const { timezone } = await getSettings();
@@ -51,8 +51,8 @@ export async function createAutomationCampaign(raw: unknown) {
   const history = Date.parse(goal.startDate) - Date.now() < 7 * DAY ? await dbDeps.history() : undefined;
   const seed = randomInt(2 ** 31);
   const posts = buildPlan({
-    goal, cfg: input.planConfig, tz: timezone, seed, content: setup.config, angles: setup.angles, variants: input.generationConfig.variantsPerPost, history,
-    accounts: accounts.map((a) => ({ id: a!.id, platform: a!.platform as "twitter" | "threads" })),
+    goal, cfg: input.planConfig, tz: timezone, seed, content: onlyTypes(setup.config, goal.types, goal.targetPosts, goal.length), angles: setup.angles, variants: input.generationConfig.variantsPerPost, history,
+    accounts: accounts.map((a) => ({ id: a!.id, platform: a!.platform as AutomationPlatform })),
   });
 
   return db.$transaction(async (tx) => {
