@@ -4,7 +4,7 @@
 // whole flow is tested without a DB or network (pipeline.test.ts).
 import type { ContentType, Cta } from "@/lib/agents/schemas";
 import { AiBudgetError, type CallCtx } from "@/lib/ai/generate";
-import { thread, voiced } from "@/lib/boards/voice";
+import { casual, thread, voiced } from "@/lib/boards/voice";
 import { prepareBatch, writePost, type ContentDeps } from "@/lib/content/generate";
 import type { AutomationPlatform, GenerationConfig, Goal, QcConfig, ReviewPolicy } from "./config";
 import { borderline, confidence, decide, hardFails, hardRules, nearMisses, type QcRules, type RuleResult, type Verdict } from "./qc";
@@ -62,6 +62,15 @@ export type PostOutcome = {
 /** The campaign's language choice reaches the writer as an audience signal (briefLanguage reads it). */
 const audienceFor = (g: Goal) => g.audience + (g.language === "en" ? " (international, English)" : g.language === "id" ? " (Indonesia)" : "");
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
+
+/** The score and confidence said like a colleague, not as "Verdict: pass (10 dari 10). Confidence 87%". */
+const verdictCore = (verdict: Verdict | null, scores: number[], pct: number) => {
+  if (!verdict || !scores.length) return `Gue belum dapet skor buat yang ini, confidence ${pct}%`;
+  const sc = scores.join("/");
+  return verdict === "pass" ? `Skornya dapet ${sc} dari 10 nih, lolos QC. Gue lumayan yakin (confidence ${pct}%) ini udah on-brand`
+    : verdict === "fail" ? `Skornya cuma ${sc} dari 10, belum lolos QC (confidence ${pct}%)`
+    : `Skornya ${sc} dari 10, gue masih ragu (confidence ${pct}%)`;
+};
 
 export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): Promise<PostOutcome> {
   const rulesCfg = deps.rules();
@@ -152,9 +161,9 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
     });
     const issues = samples.flatMap(qcIssues).slice(0, 2);
     await say("postQc", voiced(t, "postQc", "verdict", {
-      core: `Verdict: ${verdict ?? "tidak ada"}${samples[0] ? ` (${samples.map((s) => s.score).join(" / ")} dari 10)` : ""}. Confidence ${Math.round(c.value * 100)}%`,
+      core: verdictCore(verdict, samples.map((s) => s.score), Math.round(c.value * 100)),
       issues: issues.join(" "), fix: issues.length ? samples.find((s) => s.suggestedFix)?.suggestedFix ?? "" : "",
-      decision: decision.action === "auto_approve" ? "Disetujui otomatis." : `Kukirim ke kamu: ${decision.reasons.slice(0, 2).join("; ")}.`,
+      decision: decision.action === "auto_approve" ? "Disetujui otomatis." : `Gue kirim ke lo buat dicek: ${casual(decision.reasons.slice(0, 2).join("; "))}.`,
     }), job.slot);
     return {
       status: decision.action === "auto_approve" ? "approved" : "needs_review",

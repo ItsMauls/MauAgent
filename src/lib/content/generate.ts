@@ -7,7 +7,7 @@ import type { CallCtx, PostBrief } from "@/lib/agents";
 import { roleMemoryBlock } from "@/lib/agents/memory";
 import { getPersona } from "@/lib/agents/persona";
 import { AiBudgetError, generateStructured } from "@/lib/ai/generate";
-import { thread as newThread, voiced, type Thread } from "@/lib/boards/voice";
+import { casual, thread as newThread, voiced, type Thread } from "@/lib/boards/voice";
 import { contentVariants, normalizeType, SocialPosts, type ContentType, type Cta, type Note, type Persona, type PostLength } from "@/lib/agents/schemas";
 import { contentSetup, type ContentConfig, type ContentSetup } from "./config";
 import { loadContext } from "./context";
@@ -271,7 +271,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
         };
       });
       timedOut = false;
-      await say("socmedSpecialist", variants.map((v, i) => `Variant ${i + 1}${v.angle ? ` (${v.angle})` : ""}: "${clip(v.text)}"${v.needsSource ? " [ada klaim tanpa sumber]" : ""}`).join("\n"), slot);
+      await say("socmedSpecialist", variants.map((v, i) => `Draf ${i + 1}${v.angle ? ` (${v.angle})` : ""}: "${clip(v.text)}"${v.needsSource ? " [ada klaim tanpa sumber]" : ""}`).join("\n"), slot);
     } catch (e) {
       if (e instanceof AiBudgetError) throw e;
       problem = `Generation failed: ${message(e)}`;
@@ -292,7 +292,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
     });
     const rules = [...verdicts];
     const scores: (number | null)[] = variants.map(() => null);
-    await say("qc", verdicts.map((v, i) => `Variant ${i + 1} ${v.status === "rejected" ? `ditolak: ${v.reasons.slice(0, 2).join("; ")}` : v.status === "needs_review" ? `perlu dicek: ${v.reasons.slice(0, 2).join("; ")}` : "lolos aturan dasar."}`).join("\n"), slot);
+    await say("qc", verdicts.map((v, i) => `Draf ${i + 1} ${v.status === "rejected" ? `ditolak, ${casual(v.reasons.slice(0, 2).join("; "))}` : v.status === "needs_review" ? `perlu dicek, ${casual(v.reasons.slice(0, 2).join("; "))}` : "lolos aturan dasar."}`).join("\n"), slot);
     // Layer 2: the judge reads what survived. If it cannot run, nothing is approved.
     const live = verdicts.flatMap((v, i) => (v.status === "rejected" ? [] : [i]));
     if (live.length) {
@@ -306,7 +306,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
         const scored = JudgeVerdicts.parse(out.payload);
         judged = applyJudge(scored, live.length, cfg.judge.minScore);
         live.forEach((vi, k) => (scores[vi] = scored.verdicts.find((x) => x.variant === k + 1)?.score ?? null));
-        await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Variant ${vi + 1} (${j.score}/10): ${j.reasons.slice(0, 2).join(" ")}` : `Variant ${vi + 1}: belum bisa dinilai.`; }).join("\n"), slot);
+        await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Opsi ${vi + 1} dapet ${j.score}/10. ${j.reasons.slice(0, 2).join(" ")}` : `Opsi ${vi + 1} belum bisa dinilai.`; }).join("\n"), slot);
       } catch (e) {
         if (e instanceof AiBudgetError) throw e;
         judged = live.map(() => ({ reject: [], review: [`Quality judge unavailable: ${message(e)}`] }));
@@ -335,7 +335,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
       alternatives: rest.map(({ v, verdict }) => ({ text: v.text, thread: v.thread, angle: v.angle, sourceNote: v.sourceNote, confidence: v.confidence, status: verdict.status, reasons: verdict.reasons })),
     };
     posts.push(post);
-    await say("qc", `Variant ${best.i + 1} dipilih (${best.verdict.status === "approved" ? "approved" : "perlu review"})${best.verdict.reasons.length ? `: ${best.verdict.reasons.slice(0, 2).join("; ")}` : ""}.${rest.length ? ` ${rest.length} variant lain disimpan sebagai alternatif.` : ""}`, slot);
+    await say("qc", `${best.verdict.status === "approved" ? `Opsi ${best.i + 1} gue approve ya` : `Opsi ${best.i + 1} gue pilih, tapi perlu review`}${best.verdict.reasons.length ? `: ${casual(best.verdict.reasons.slice(0, 2).join("; "))}` : ""}.${rest.length ? ` ${rest.length} opsi lain gue simpan sebagai alternatif.` : ""}`, slot);
     addToBatch(batch, best.v);
     best.v.urls.forEach((u) => usedUrls.add(u));
     const others = rest.map((x) => scores[x.i]).filter((s): s is number => s !== null);

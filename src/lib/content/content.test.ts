@@ -423,7 +423,7 @@ test("the Specialist / QC conversation is recorded, streamed live and ends with 
   const { payload } = await generatePosts({ ...brief, count: 1 }, {}, deps({ note: async (n) => void live.push(n) }));
   assert.deepEqual(live, payload.transcript);
   assert.deepEqual([...new Set(payload.transcript.map((n) => n.who))], ["socmedSpecialist", "qc"]);
-  assert.match(payload.transcript.at(-1)!.text, /^Variant \d dipilih \(approved\)/);
+  assert.match(payload.transcript.at(-1)!.text, /^Opsi \d gue approve ya/);
 });
 
 test("a picked satire batch writes satire", async () => {

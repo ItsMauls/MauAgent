@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PHRASES, thread, voiced, type Speaker, type Thread } from ".";
+import { casual, PHRASES, thread, voiced, type Speaker, type Thread } from ".";
 
 /** One value for every field any line reads. */
 const D = {
   posts: 10, audience: "pekerja kantor", pillars: "kopi", body: "Tujuan: x", written: 3, review: 3, failed: 0, n: 4, type: "Spontaneous", variants: 3,
-  angles: "", attempt: 2, max: 3, avoid: "Engagement bait", last: false, fails: "Engagement bait", nearMiss: false, confidence: 74, threshold: 80,
-  core: "Verdict: pass (9 dari 10). Confidence 85%", issues: "Sounds stiff", fix: "Pakai kalimat pendek.", decision: "Disetujui otomatis.",
+  angles: "", attempt: 2, max: 3, avoid: "Engagement bait", last: false, fails: "Engagement bait: RT", nearMiss: false, confidence: 74, threshold: 80,
+  core: "Skornya dapet 9 dari 10 nih, lolos QC (confidence 85%)", issues: "Sounds stiff", fix: "Pakai kalimat pendek.", decision: "Disetujui otomatis.",
 };
 const speakers = Object.keys(PHRASES) as Speaker[];
 const kinds = (s: Speaker) => Object.keys(PHRASES[s]) as string[];
@@ -41,5 +41,10 @@ test("the data is printed unchanged: numbers, verdicts and reasons", () => {
   const v = say(t, "postQc", "verdict");
   assert.ok(v.includes(D.core) && v.includes(D.issues) && v.includes(D.fix) && v.includes(D.decision), v);
   const f = say(t, "postQc", "ruleFail");
-  assert.ok(f.includes(D.fails) && /Maul/.test(f), f);
+  assert.ok(f.includes("engagement bait") && /Maul/.test(f), f);
+});
+
+test("raw system messages are said like a colleague; unknown ones pass through", () => {
+  assert.equal(casual("Contains an em dash; Trimmed to fit X: check the meaning"), "jangan pake em dash; teksnya kepanjangan buat X, gue pangkas, tolong cek maknanya masih nyambung");
+  assert.equal(casual("Something new"), "Something new");
 });

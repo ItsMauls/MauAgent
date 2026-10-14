@@ -164,19 +164,19 @@ test("the team discussion: the Specialist hands over, Post QC checks and gives a
   const lines: string[] = [];
   const say = async (who: string, text: string, slot?: number) => void lines.push(`${who}@${slot}: ${text}`);
   await runPost(job(), {}, { ...pipeline(content()), say });
-  assert.match(lines[0], /^socmedSpecialist@3: .*Post 4 /);
-  assert.match(lines[1], /^postQc@3: .*(Rule check lolos|Rule check aman|Lolos rule check)/);
-  assert.ok(lines.some((l) => /^postQc@3: .*Verdict: pass \(9( \/ 9)? dari 10\)\. Confidence \d+%.* Disetujui otomatis\./.test(l)), lines.join("\n"));
+  assert.match(lines[0], /^socmedSpecialist@3: .*ke-4 /);
+  assert.match(lines[1], /^postQc@3: .*(Aturan dasar aman|Filter awal lolos|Secara rules udah oke)/);
+  assert.ok(lines.some((l) => /^postQc@3: .*Skornya dapet 9(\/9)? dari 10 nih, lolos QC\. Gue lumayan yakin \(confidence \d+%\).* Disetujui otomatis\./.test(l)), lines.join("\n"));
 
   lines.length = 0;
   const bait = content({ write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => `RT kalau setuju ${fresh()}`)), costUsd: 0.01 }) });
   await runPost(job(), {}, { ...pipeline(bait), say });
-  assert.ok(lines.some((l) => /postQc@3: .*rule check gagal.*Engagement bait.*Maul/i.test(l)), lines.join("\n"));
-  assert.ok(lines.some((l) => /Retry habis/.test(l)));
+  assert.ok(lines.some((l) => /postQc@3: .*(nyangkut di aturan dasar|belum lolos filter awal|masih ada yang kurang).*engagement bait.*Maul/i.test(l)), lines.join("\n"));
+  assert.ok(lines.some((l) => /Retry-nya abis/.test(l)));
 
   lines.length = 0;
   await runPost(job({ pilot: true }), {}, { ...pipeline(content()), say });
-  assert.ok(lines.some((l) => /Kukirim ke kamu: Pilot post/.test(l)), lines.join("\n"));
+  assert.ok(lines.some((l) => /Gue kirim ke lo buat dicek: Pilot post/.test(l)), lines.join("\n"));
 });
 
 // Fixture: the whole discussion of one post that fails a rule, is rewritten and passes. Every line has a speaker with
