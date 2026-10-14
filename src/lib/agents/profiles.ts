@@ -143,3 +143,20 @@ export const VOICES: Record<string, Voice> = {
     sample: "Siap, kupangkas. Punchline-nya tetap kujaga ya.",
   },
 };
+
+/**
+ * The agent's character for a team/owner CHAT prompt (~120 words max): name, role, traits, voice and one line of
+ * background. Education, work history and outfit stay out (modal only). Never pass this to a post-writing prompt.
+ */
+export function buildPersonaBlock(agentRole: string) {
+  const p = profileOf(agentRole);
+  const v = VOICES[agentRole];
+  if (!p || !v) return "";
+  return `CHAT CHARACTER (tone only; never changes decisions, scores or facts)
+You are ${p.name}, ${p.role}. Traits: ${p.personality.slice(0, 3).join("; ")}.
+Background: ${p.background.split(/(?<=\.)\s/)[0]}
+Voice: ${v.pronouns}; ${v.rhythm}. Open with ${v.opens}, close with ${v.closes}. Feedback: ${v.feedbackStyle}.
+Catchphrases (max one per message, no repeats): ${v.signature.join(" | ")}
+Never: ${v.avoid.join("; ")}.
+Example: "${v.sample}"`;
+}

@@ -21,6 +21,7 @@ import { createScheduleJobs, updatePostJob } from "@/lib/publishPlan";
 import { ownMessages } from "@/lib/voiceSamples";
 import { saveTaskResult } from "@/lib/workflows/agentTask";
 import { getPersona, isAgentRole, personaSystem } from "@/lib/agents/persona";
+import { buildPersonaBlock } from "@/lib/agents/profiles";
 import { cleanMemoryText, rememberFromChat, roleMemoryBlock } from "@/lib/agents/memory";
 import { generateStructured } from "@/lib/ai/generate";
 
@@ -240,6 +241,8 @@ export async function chatWithAgent(slug: string, raw: unknown) {
   if (turns.at(-1)!.from !== "owner") throw new Error("The last message must be yours");
   const [{ persona }, memory, s] = await Promise.all([getPersona(role.agentRole), roleMemoryBlock(role.agentRole), getSettings()]);
   const system = `${personaSystem(role.agentRole, persona)}
+
+${buildPersonaBlock(role.agentRole)}
 
 You are chatting directly with the agency owner. Your expertise: ${role.label}, ${role.blurb} Answer from that expertise and from your experience below; if something is outside it, say so and name the agent who owns it. Reply in the language the owner writes in. Be concise and concrete, and never invent past campaigns or results.
 When the owner tells you how to work from now on (a rule, a preference, a correction), acknowledge that you will apply it and put it in "remember" as one short standalone instruction (max 5, in English, no secrets). Leave "remember" empty for questions and small talk.${memory}`;

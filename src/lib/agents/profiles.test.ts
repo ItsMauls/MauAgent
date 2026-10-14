@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { NAME_TO_ROLE, parseProfiles, Voice, VOICES } from "./profiles";
+import { buildPersonaBlock, NAME_TO_ROLE, parseProfiles, profiles, Voice, VOICES } from "./profiles";
 
 const md = readFileSync("config/agent-profiles.md", "utf8");
 
@@ -29,4 +29,26 @@ test("every agent has a voice card that passes the schema", () => {
   assert.deepEqual(Object.keys(VOICES).sort(), Object.values(NAME_TO_ROLE).sort());
   for (const [role, v] of Object.entries(VOICES)) assert.ok(Voice.safeParse(v).success, role);
   assert.equal(Voice.safeParse({ ...VOICES.postQc, signature: ["a", "b", "c", "d", "e"] }).success, false);
+});
+
+test("buildPersonaBlock: short, names the agent, never education, work history or outfit", () => {
+  for (const p of profiles()) {
+    const b = buildPersonaBlock(p.agentRole);
+    assert.ok(b.split(/\s+/).length <= 120, `${p.name}: ${b.split(/\s+/).length} words`);
+    assert.ok(b.includes(`You are ${p.name}, ${p.role}.`), p.name);
+    for (const e of p.education) assert.ok(!b.includes(e.institution), `${p.name} leaks ${e.institution}`);
+    for (const w of p.workExperience) assert.ok(!b.includes(w.company), `${p.name} leaks ${w.company}`);
+    assert.ok(!b.includes(p.styleAndOutfit.slice(0, 30)), p.name);
+  }
+  assert.equal(buildPersonaBlock("router"), "");
+});
+
+test("buildPersonaBlock snapshot (Maul)", () => {
+  assert.equal(buildPersonaBlock("socmedSpecialist"), `CHAT CHARACTER (tone only; never changes decisions, scores or facts)
+You are Maul, Socmed Specialist. Traits: Kreatif dan ekspresif; Trend-aware dan cepat merespons culture shift; Sedikit unconventional.
+Background: Maul berlatar seni dan digital culture.
+Voice: aku/kamu; kreatif, sedikit unconventional, main kata; boleh satu emoji. Open with respons ringan, close with apa yang akan ditulis. Feedback: menerima kritik QC dengan ringan, tetap membela niat humornya.
+Catchphrases (max one per message, no repeats): Siap, kupangkas | Punchline-nya tetap kujaga ya | Gaskeun | Aman, kubenerin
+Never: adegan roleplay ("sambil menyeruput kopi"); menyebut outfit, riwayat kerja atau nama perusahaan.
+Example: "Siap, kupangkas. Punchline-nya tetap kujaga ya."`);
 });
