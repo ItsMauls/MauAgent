@@ -7,6 +7,7 @@ import { AiBudgetError, generateStructured } from "@/lib/ai/generate";
 import { budgetGate, monthSpent } from "@/lib/cost";
 import { dbDeps } from "@/lib/content/generate";
 import { writeFeedback } from "@/lib/boards/feedback";
+import { thread, voiced } from "@/lib/boards/voice";
 import { getPersona } from "@/lib/agents/persona";
 import { getSettings } from "@/lib/settings";
 import type { ContentType, Cta } from "@/lib/agents/schemas";
@@ -54,15 +55,17 @@ export async function ensureStrategy(id: string): Promise<boolean> {
   if (c.strategy) return true;
   const [{ persona }, s] = await Promise.all([getPersona("accountManager"), db.setting.findUnique({ where: { id: "default" }, select: { writingVoice: true } })]);
   const say = sayFor(id);
-  await say("accountManager", `I have the command: ${c.goal.targetPosts} posts for ${c.goal.audience}, pillars: ${c.goal.pillars.join(", ")}. Writing a detailed brief for the team.`);
+  const t = thread(`${id}:brief`);
+  await say("accountManager", voiced(t, "accountManager", "received", { posts: c.goal.targetPosts, audience: c.goal.audience, pillars: c.goal.pillars.join(", ") }));
   try {
     const out = await generateStructured("accountManager", strategyPrompt(c.goal, persona, s?.writingVoice ?? null), CampaignBrief, {
       idemKey: `auto:${id}:brief`, automationCampaignId: id, step: "campaign-brief",
     });
     await db.automationCampaign.updateMany({ where: { id, strategy: { equals: Prisma.DbNull } }, data: { strategy: out.payload as Prisma.InputJsonValue } });
     const b = out.payload;
-    await say("accountManager", `The brief is ready. Objective: ${b.objective}\nAudience: ${b.audienceInsight}\nTone: ${b.toneNotes}\n${b.pillars.map((p) => `• ${p.pillar}: ${p.focus} (${p.angles.length} angles)`).join("\n")}${b.mustAvoid.length ? `\nNever: ${b.mustAvoid.join("; ")}` : ""}\nHanding it to the Socmed Specialist.`);
-    await say("socmedSpecialist", "Got the brief. I will write the pilot posts from it, in the account's voice, and pass each one to Post QC.");
+    const body = `Tujuan: ${b.objective}\nAudiens: ${b.audienceInsight}\nNada: ${b.toneNotes}\n${b.pillars.map((p) => `• ${p.pillar}: ${p.focus} (${p.angles.length} angle)`).join("\n")}${b.mustAvoid.length ? `\nHindari: ${b.mustAvoid.join("; ")}` : ""}`;
+    await say("accountManager", voiced(t, "accountManager", "brief", { body }));
+    await say("socmedSpecialist", voiced(t, "socmedSpecialist", "ack"));
     return true;
   } catch (e) {
     if (!(e instanceof AiBudgetError)) throw e;
@@ -159,7 +162,7 @@ export async function processSlot(id: string, slot: number, manual = false): Pro
         // The account persona file, when uploaded, is the voice. Otherwise a personal account is written in the owner's
         // voice and a brand speaks in its own (brandVoice in the brief).
         say: sayFor(id),
-        content: { ...dbDeps, note: async (n) => sayFor(id)(n.who, n.text.replace(/post (\d+) dari \d+/, "post $1"), n.post ?? slot), voice: c.goal.persona ? async () => c.goal.persona! : c.goal.kind === "personal" ? dbDeps.voice : async () => null, recentTexts: async (days) => [...corpus, ...(await dbDeps.recentTexts(days))] },
+        content: { ...dbDeps, note: async (n) => sayFor(id)(n.who, n.text, n.post ?? slot), voice: c.goal.persona ? async () => c.goal.persona! : c.goal.kind === "personal" ? dbDeps.voice : async () => null, recentTexts: async (days) => [...corpus, ...(await dbDeps.recentTexts(days))] },
         rules: qcRules,
         qcJudge: (prompt, ctx) => generateStructured("postQc", prompt, QcVerdict, { ...ctx, config: { temperature: ctx.temperature } }),
       },
@@ -209,6 +212,14 @@ export async function finishPilotIfDone(id: string) {
   const open = await db.campaignPost.count({ where: { automationCampaignId: id, pilot: true, status: { in: ["planned", "generating", "qc"] } } });
   if (open) return false;
   const { count } = await db.automationCampaign.updateMany({ where: { id, status: "piloting" }, data: { status: "awaiting_scale" } });
+  if (count) {
+    // Rina closes the pilot once, from the counts (one status per slot; rows are per account).
+    const rows = await db.campaignPost.findMany({ where: { automationCampaignId: id, pilot: true }, select: { slot: true, status: true }, distinct: ["slot"] });
+    const n = (s: string[]) => rows.filter((r) => s.includes(r.status)).length;
+    await sayFor(id)("accountManager", voiced(thread(`${id}:wrap`), "accountManager", "wrapUp", {
+      written: rows.length - n(["failed", "skipped"]), review: n(["needs_review"]), failed: n(["failed", "skipped"]),
+    }));
+  }
   return count > 0;
 }
 

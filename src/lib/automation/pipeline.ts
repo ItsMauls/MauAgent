@@ -4,6 +4,7 @@
 // whole flow is tested without a DB or network (pipeline.test.ts).
 import type { ContentType, Cta } from "@/lib/agents/schemas";
 import { AiBudgetError, type CallCtx } from "@/lib/ai/generate";
+import { thread, voiced } from "@/lib/boards/voice";
 import { prepareBatch, writePost, type ContentDeps } from "@/lib/content/generate";
 import type { AutomationPlatform, GenerationConfig, Goal, QcConfig, ReviewPolicy } from "./config";
 import { borderline, confidence, decide, hardFails, hardRules, nearMisses, type QcRules, type RuleResult, type Verdict } from "./qc";
@@ -71,6 +72,8 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
   let avoid: string[] = [];
   let costUsd = 0;
   const attempts: Record<string, unknown>[] = [];
+  // One discussion thread per post, across its retries: catchphrases are not repeated, and a re-run says the same.
+  const t = thread(`${job.campaignId}:s${job.slot}:r${job.retryCount}`);
 
   for (let retry = job.retryCount; ; retry++) {
     const shared = await prepareBatch({
@@ -81,14 +84,14 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
       // The link (if any) is appended by code only to posts whose CTA is visit_link.
       linkUrl: job.goal.linkUrl, mediaType: "text_only", length: job.goal.length,
       count: job.gen.chunkSize, types: [job.type], variants: job.gen.variantsPerPost, siblings: job.recent.slice(0, job.gen.chunkSize),
-    }, deps.content);
+    }, deps.content, t);
     const written = await writePost(shared, { slot: job.slot, type: job.type, angles: bf.angles, cta: job.cta, avoid }, { ...ctx, idemKey: `${base}:r${retry}` }, deps.content);
     costUsd += written.costUsd;
     const last = retry - job.retryCount >= job.qc.maxRetries;
 
     if (!written.post) {
       attempts.push({ retry, problem: written.problem });
-      await say("socmedSpecialist", `I could not write a usable post ${n}: ${written.problem.slice(0, 200)}. ${last ? "No retries left, it goes to you." : "Trying again."}`, job.slot);
+      await say("socmedSpecialist", voiced(t, "socmedSpecialist", "noPost", { n, last }), job.slot);
       if (!last) { avoid = [written.problem.slice(0, 300)]; continue; }
       return {
         status: "needs_review", text: null, thread: [], alternatives: [], sourceNote: null, confidence: null, retryCount: retry, costUsd,
@@ -102,10 +105,10 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
       rulesCfg,
     );
     const fails = hardFails(rules).map((r) => r.detail);
-    await say("socmedSpecialist", `Post ${n} is ready, handing it to Post QC.`, job.slot);
+    await say("socmedSpecialist", voiced(t, "socmedSpecialist", "handoff", { n }), job.slot);
     await say("postQc", fails.length
-      ? `Rule check failed: ${fails.slice(0, 3).join("; ")}. ${last ? "No retries left, it goes to you." : "Sending it back to the Socmed Specialist to rewrite."}`
-      : `Rule check passed${rules.some((r) => r.nearMiss) ? " (close to a limit)" : ""}. Reading it as a stranger would.`, job.slot);
+      ? voiced(t, "postQc", "ruleFail", { fails: fails.slice(0, 3).join("; "), last })
+      : voiced(t, "postQc", "rulePass", { nearMiss: rules.some((r) => r.nearMiss) }), job.slot);
     // A hard fail is regenerated before paying for the QC judge.
     if (fails.length && !last) {
       attempts.push({ retry, text: post.text, fails });
@@ -138,7 +141,7 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
     });
     let c = conf();
     if (samples[0] && borderline(samples[0].verdict, c.value, job.qc)) {
-      await say("postQc", `It is close to the ${Math.round(job.qc.minConfidence * 100)}% threshold (${Math.round(c.value * 100)}%), asking for a second opinion.`, job.slot);
+      await say("postQc", voiced(t, "postQc", "borderline", { confidence: Math.round(c.value * 100), threshold: Math.round(job.qc.minConfidence * 100) }), job.slot);
       await judge("qc2", 0.4);
       c = conf();
     }
@@ -148,8 +151,11 @@ export async function runPost(job: PostJob, ctx: CallCtx, deps: PipelineDeps): P
       hardFails: fails, forceReview: written.ruleReview, verdict, confidence: c.value, type: job.type, policy: job.policy, cfg: job.qc, retry: retry - job.retryCount, pilot: job.pilot,
     });
     const issues = samples.flatMap(qcIssues).slice(0, 2);
-    await say("postQc", `Verdict: ${verdict ?? "no verdict"}${samples[0] ? ` (${samples.map((s) => s.score).join(" / ")} of 10)` : ""}. Confidence ${Math.round(c.value * 100)}%${issues.length ? `. ${issues.join(" ")}` : ""}. ${
-      decision.action === "auto_approve" ? "Approved automatically." : `Sent to you: ${decision.reasons.slice(0, 2).join("; ")}.`}`, job.slot);
+    await say("postQc", voiced(t, "postQc", "verdict", {
+      core: `Verdict: ${verdict ?? "tidak ada"}${samples[0] ? ` (${samples.map((s) => s.score).join(" / ")} dari 10)` : ""}. Confidence ${Math.round(c.value * 100)}%`,
+      issues: issues.join(" "), fix: issues.length ? samples.find((s) => s.suggestedFix)?.suggestedFix ?? "" : "",
+      decision: decision.action === "auto_approve" ? "Disetujui otomatis." : `Kukirim ke kamu: ${decision.reasons.slice(0, 2).join("; ")}.`,
+    }), job.slot);
     return {
       status: decision.action === "auto_approve" ? "approved" : "needs_review",
       text: post.text, thread: post.thread, alternatives: post.alternatives, sourceNote: post.sourceNote ?? null,

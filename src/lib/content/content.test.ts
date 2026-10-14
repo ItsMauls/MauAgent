@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { AiBudgetError } from "@/lib/ai/generate";
 import { CONTENT_TYPES, normalizeType, SocialPosts, type ContentType } from "@/lib/agents/schemas";
 import { DEFAULT_PERSONAS } from "@/lib/agents/persona";
+import { buildPersonaBlock, VOICES } from "@/lib/agents/profiles";
+import { qcPrompt } from "@/lib/automation/qcJudge";
 import { buildSetup, contentSetup, parseExamples, type ContentConfig } from "./config";
 import { ctaPlan, generatePosts, onlyTypes, type ContentDeps } from "./generate";
 import { applyJudge, type JudgeVerdicts } from "./judge";
@@ -163,6 +165,13 @@ test("prompt: the owner's writing voice replaces the persona style", () => {
   assert.match(withVoice, /SUARA PEMILIK AKUN[\s\S]*sinis ringan/);
   assert.doesNotMatch(withVoice, /Gaya: /);
   assert.match(buildPrompt(promptInput()).system, /Gaya: /);
+});
+
+test("prompt: the team-chat character never reaches the post writer or the QC judge (only the account's voice does)", () => {
+  const chat = [buildPersonaBlock("socmedSpecialist"), VOICES.socmedSpecialist.sample, ...VOICES.socmedSpecialist.signature, "CHAT CHARACTER"];
+  const { system, prompt } = buildPrompt(promptInput());
+  const qc = qcPrompt({ text: "x", thread: [], type: "light_humor", typeLabel: "Light humor", topic: "t", audience: "a", persona, voice: null, context: "", sourceNote: null });
+  for (const s of chat) for (const p of [system, prompt, qc]) assert.ok(!p.includes(s), `leaked: ${s.slice(0, 40)}`);
 });
 
 test("prompt: an empty persona stops with persona_missing", () => {
@@ -414,7 +423,7 @@ test("the Specialist / QC conversation is recorded, streamed live and ends with 
   const { payload } = await generatePosts({ ...brief, count: 1 }, {}, deps({ note: async (n) => void live.push(n) }));
   assert.deepEqual(live, payload.transcript);
   assert.deepEqual([...new Set(payload.transcript.map((n) => n.who))], ["socmedSpecialist", "qc"]);
-  assert.match(payload.transcript.at(-1)!.text, /^Aku pilih variant \d \(approved\)/);
+  assert.match(payload.transcript.at(-1)!.text, /^Variant \d dipilih \(approved\)/);
 });
 
 test("a picked satire batch writes satire", async () => {

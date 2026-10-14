@@ -7,6 +7,7 @@ import type { CallCtx, PostBrief } from "@/lib/agents";
 import { roleMemoryBlock } from "@/lib/agents/memory";
 import { getPersona } from "@/lib/agents/persona";
 import { AiBudgetError, generateStructured } from "@/lib/ai/generate";
+import { thread as newThread, voiced, type Thread } from "@/lib/boards/voice";
 import { contentVariants, normalizeType, SocialPosts, type ContentType, type Cta, type Note, type Persona, type PostLength } from "@/lib/agents/schemas";
 import { contentSetup, type ContentConfig, type ContentSetup } from "./config";
 import { loadContext } from "./context";
@@ -149,7 +150,8 @@ export type PostResult = {
   ruleReview: string[];
 };
 
-export async function prepareBatch(input: BatchInput, deps: ContentDeps = dbDeps) {
+/** `thread`: the discussion thread the lines belong to (an automation post passes its own, shared across retries). */
+export async function prepareBatch(input: BatchInput, deps: ContentDeps = dbDeps, thread: Thread = newThread(input.topic)) {
   const setup = deps.setup();
   const typed = onlyTypes(setup.config, input.types ?? [], input.count, input.length);
   const cfg = input.variants ? { ...typed, variants: input.variants } : typed;
@@ -196,6 +198,7 @@ export async function prepareBatch(input: BatchInput, deps: ContentDeps = dbDeps
     posts: [] as SocialPosts["posts"],
     transcript,
     say,
+    thread,
   };
 }
 
@@ -205,7 +208,7 @@ export async function prepareBatch(input: BatchInput, deps: ContentDeps = dbDeps
  * similarity corpus). AiBudgetError is rethrown.
  */
 export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {}, deps: ContentDeps = dbDeps): Promise<PostResult> {
-  const { input, setup, cfg, topic, research, uploaded, persona, voice, language, corpus, batch, usedUrls, posts, say } = shared;
+  const { input, setup, cfg, topic, research, uploaded, persona, voice, language, corpus, batch, usedUrls, posts, say, thread } = shared;
   const { slot, type, angles, cta } = spec;
   const typeCfg = cfg.types[type];
   if (!typeCfg) throw new Error(`Content type "${type}" is not allowed in this batch`);
@@ -226,7 +229,9 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
   };
   const clip = (t: string, n = 140) => (t.length > n ? `${t.slice(0, n).trimEnd()}…` : t);
 
-  await say("socmedSpecialist", `Oke, post ${slot + 1} dari ${input.count}: tipe "${typeCfg.label}". Aku bikin ${cfg.variants} variant${angles.length ? ` dengan angle ini: ${angles.join("; ")}` : ""}.`, slot);
+  await say("socmedSpecialist", spec.avoid?.length
+    ? voiced(thread, "socmedSpecialist", "rewrite", { n: slot + 1, avoid: spec.avoid.slice(0, 3).join("; ") })
+    : voiced(thread, "socmedSpecialist", "plan", { n: slot + 1, type: typeCfg.label, variants: cfg.variants, angles: angles.join("; ") }), slot);
   let avoid: string[] = spec.avoid ?? [];
   let problem = "";
   let timedOut = false;
@@ -238,7 +243,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
     const key = (s: string) => (ctx.idemKey ? `${ctx.idemKey}:p${slot}:a${attempt}${s}` : undefined);
     // After a timeout or HTTP error, ask for a single variant: a smaller reply is faster.
     const n = timedOut ? 1 : cfg.variants;
-    if (attempt > 1) await say("socmedSpecialist", `Percobaan ke-${attempt} dari ${cfg.maxAttempts}, aku tulis ulang${avoid.length ? ` dan hindari: ${avoid.slice(0, 3).join("; ")}` : ""}.`, slot);
+    if (attempt > 1) await say("socmedSpecialist", voiced(thread, "socmedSpecialist", "retry", { attempt, max: cfg.maxAttempts, avoid: avoid.slice(0, 3).join("; ") }), slot);
     const prompt: PromptInput = {
       brief: input, type, typeCfg, examples: setup.examples[type] ?? [], angles: angles.slice(0, n), n, persona: persona!, voice, language,
       context: uploaded, places: research.places, facts, researchMissing: typeCfg.research !== "none" && !facts.length,
@@ -270,7 +275,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
     } catch (e) {
       if (e instanceof AiBudgetError) throw e;
       problem = `Generation failed: ${message(e)}`;
-      await say("socmedSpecialist", `Waduh, panggilan ke model gagal: ${message(e)}`, slot);
+      await say("socmedSpecialist", voiced(thread, "socmedSpecialist", "modelError"), slot);
       timedOut = true;
       log.push({ attempt, error: problem });
       if (attempt < cfg.maxAttempts) await deps.sleep(2000 * 2 ** (attempt - 1));
@@ -287,7 +292,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
     });
     const rules = [...verdicts];
     const scores: (number | null)[] = variants.map(() => null);
-    await say("qc", verdicts.map((v, i) => `Variant ${i + 1} ${v.status === "rejected" ? `kurang cocok: ${v.reasons.slice(0, 2).join("; ")}` : v.status === "needs_review" ? `lumayan, tapi coba dicek: ${v.reasons.slice(0, 2).join("; ")}` : "aman, tidak ada masalah di aturan dasar."}`).join("\n"), slot);
+    await say("qc", verdicts.map((v, i) => `Variant ${i + 1} ${v.status === "rejected" ? `ditolak: ${v.reasons.slice(0, 2).join("; ")}` : v.status === "needs_review" ? `perlu dicek: ${v.reasons.slice(0, 2).join("; ")}` : "lolos aturan dasar."}`).join("\n"), slot);
     // Layer 2: the judge reads what survived. If it cannot run, nothing is approved.
     const live = verdicts.flatMap((v, i) => (v.status === "rejected" ? [] : [i]));
     if (live.length) {
@@ -301,11 +306,11 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
         const scored = JudgeVerdicts.parse(out.payload);
         judged = applyJudge(scored, live.length, cfg.judge.minScore);
         live.forEach((vi, k) => (scores[vi] = scored.verdicts.find((x) => x.variant === k + 1)?.score ?? null));
-        await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Variant ${vi + 1} (${j.score}/10): ${j.reasons.slice(0, 2).join(" ")}` : `Variant ${vi + 1}: belum bisa aku nilai.`; }).join("\n"), slot);
+        await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Variant ${vi + 1} (${j.score}/10): ${j.reasons.slice(0, 2).join(" ")}` : `Variant ${vi + 1}: belum bisa dinilai.`; }).join("\n"), slot);
       } catch (e) {
         if (e instanceof AiBudgetError) throw e;
         judged = live.map(() => ({ reject: [], review: [`Quality judge unavailable: ${message(e)}`] }));
-        await say("qc", `Judge-nya nggak bisa jalan (${message(e)}), jadi belum ada yang aku approve otomatis.`, slot);
+        await say("qc", "Penilai kualitas tidak bisa berjalan, jadi tidak ada yang disetujui otomatis. Detailnya ada di log.", slot);
       }
       live.forEach((i, k) => (verdicts[i] = merge(verdicts[i], judged[k])));
     }
@@ -320,7 +325,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
       const reasons = [...new Set(verdicts.flatMap((v) => v.reasons))];
       problem = `All ${variants.length} variants were rejected: ${reasons.join("; ")}`;
       avoid = reasons.slice(0, 6);
-      await say("qc", `Semua ${variants.length} variant gagal. Aku balikin ke Socmed Specialist ya, tolong perhatikan: ${avoid.slice(0, 3).join("; ")}`, slot);
+      await say("qc", `Semua ${variants.length} variant ditolak. Kembali ke Socmed Specialist dengan catatan: ${avoid.slice(0, 3).join("; ")}`, slot);
       continue;
     }
     const [best, ...rest] = checked;
@@ -330,7 +335,7 @@ export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {
       alternatives: rest.map(({ v, verdict }) => ({ text: v.text, thread: v.thread, angle: v.angle, sourceNote: v.sourceNote, confidence: v.confidence, status: verdict.status, reasons: verdict.reasons })),
     };
     posts.push(post);
-    await say("qc", `Aku pilih variant ${best.i + 1} (${best.verdict.status === "approved" ? "approved" : "perlu review"})${best.verdict.reasons.length ? `: ${best.verdict.reasons.slice(0, 2).join("; ")}` : ""}.${rest.length ? ` ${rest.length} variant lain disimpan sebagai alternatif.` : ""}`, slot);
+    await say("qc", `Variant ${best.i + 1} dipilih (${best.verdict.status === "approved" ? "approved" : "perlu review"})${best.verdict.reasons.length ? `: ${best.verdict.reasons.slice(0, 2).join("; ")}` : ""}.${rest.length ? ` ${rest.length} variant lain disimpan sebagai alternatif.` : ""}`, slot);
     addToBatch(batch, best.v);
     best.v.urls.forEach((u) => usedUrls.add(u));
     const others = rest.map((x) => scores[x.i]).filter((s): s is number => s !== null);
@@ -367,7 +372,7 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
     costUsd += r.costUsd;
     if (!r.post) {
       skipped.push({ type, reason: r.problem });
-      await say("qc", `Post ${slot + 1} aku lewati setelah ${r.attempts} kali percobaan.`, slot);
+      await say("qc", `Post ${slot + 1} dilewati setelah ${r.attempts} kali percobaan.`, slot);
     }
   }
 

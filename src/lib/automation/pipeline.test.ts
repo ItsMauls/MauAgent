@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DEFAULT_PERSONAS } from "@/lib/agents/persona";
+import { profileOf } from "@/lib/agents/profiles";
 import { AiBudgetError } from "@/lib/ai/generate";
 import { contentSetup } from "@/lib/content/config";
 import type { ContentDeps } from "@/lib/content/generate";
@@ -162,17 +164,41 @@ test("the team discussion: the Specialist hands over, Post QC checks and gives a
   const lines: string[] = [];
   const say = async (who: string, text: string, slot?: number) => void lines.push(`${who}@${slot}: ${text}`);
   await runPost(job(), {}, { ...pipeline(content()), say });
-  assert.match(lines[0], /^socmedSpecialist@3: Post 4 is ready, handing it to Post QC/);
-  assert.match(lines[1], /^postQc@3: Rule check passed/);
-  assert.ok(lines.some((l) => /^postQc@3: Verdict: pass \(9( \/ 9)? of 10\)\. Confidence \d+%\. Approved automatically\./.test(l)), lines.join("\n"));
+  assert.match(lines[0], /^socmedSpecialist@3: .*Post 4 /);
+  assert.match(lines[1], /^postQc@3: .*(Rule check lolos|Rule check aman|Lolos rule check)/);
+  assert.ok(lines.some((l) => /^postQc@3: .*Verdict: pass \(9( \/ 9)? dari 10\)\. Confidence \d+%.* Disetujui otomatis\./.test(l)), lines.join("\n"));
 
   lines.length = 0;
   const bait = content({ write: async (p) => ({ payload: reply(p.type, Array.from({ length: p.n }, () => `RT kalau setuju ${fresh()}`)), costUsd: 0.01 }) });
   await runPost(job(), {}, { ...pipeline(bait), say });
-  assert.ok(lines.some((l) => /postQc@3: Rule check failed: .*Engagement bait.*Sending it back to the Socmed Specialist/.test(l)));
-  assert.ok(lines.some((l) => /No retries left, it goes to you/.test(l)));
+  assert.ok(lines.some((l) => /postQc@3: .*rule check gagal.*Engagement bait.*Maul/i.test(l)), lines.join("\n"));
+  assert.ok(lines.some((l) => /Retry habis/.test(l)));
 
   lines.length = 0;
   await runPost(job({ pilot: true }), {}, { ...pipeline(content()), say });
-  assert.ok(lines.some((l) => /Sent to you: Pilot post/.test(l)), lines.join("\n"));
+  assert.ok(lines.some((l) => /Kukirim ke kamu: Pilot post/.test(l)), lines.join("\n"));
+});
+
+// Fixture: the whole discussion of one post that fails a rule, is rewritten and passes. Every line has a speaker with
+// a name and role, and the outcome (verdict, score, confidence, LLM calls) is the same as without voices.
+// Regenerate with UPDATE_FIXTURES=1 after an intended wording change.
+test("team discussion fixture: fail, retry, pass", async () => {
+  let w = 0;
+  const text = () => { w++; return w <= 3 ? `Follow for follow ya santai${w} sore${w}.` : `Santai${w} dulu${w} ini sore${w}.`; };
+  const transcript: string[] = [];
+  const label = (who: string) => (who === "qc" ? "Rule and quality checks" : `${profileOf(who)!.name} · ${profileOf(who)!.role}`);
+  const say = async (who: string, t: string, slot?: number) => void transcript.push(`**${label(who)}** (post ${slot! + 1}): ${t}`);
+  const c = content({ write: async (p, ctx) => (c.keys.push(ctx.idemKey), { payload: reply(p.type, Array.from({ length: p.n }, text)), costUsd: 0.01 }), note: async (n) => say(n.who, n.text, n.post) });
+  const d = pipeline(c);
+  const out = await runPost(job(), { idemKey: "k" }, { ...d, say });
+  assert.equal(out.status, "approved");
+  assert.equal(out.retryCount, 1);
+  assert.equal(out.qcReport.verdict, "pass");
+  assert.deepEqual(c.keys, ["k:r0:p3:a1", "k:r0:p3:a1:judge", "k:r1:p3:a1", "k:r1:p3:a1:judge"]);
+  assert.deepEqual(d.qcKeys, ["k:r1:qc", "k:r1:qc2"]);
+  const md = `# Team discussion: fail, retry, pass\n\n${transcript.join("\n\n")}\n`;
+  const file = new URL("./__fixtures__/team-discussion-retry.md", import.meta.url);
+  if (process.env.UPDATE_FIXTURES) { mkdirSync(new URL(".", file), { recursive: true }); writeFileSync(file, md); }
+  assert.equal(md, readFileSync(file, "utf8").replace(/\r\n/g, "\n"));
+  assert.ok(transcript.every((l) => /^\*\*(Rina · Account Manager|Maul · Socmed Specialist|Saras · Post QC|Rule and quality checks)\*\*/.test(l)));
 });
