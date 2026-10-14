@@ -1,0 +1,62 @@
+# Post QC hard rules for automation campaigns (layer 1 of the QC agent, no LLM).
+# Loaded and validated by src/lib/automation/qc.ts. Tighten here without code changes; restart the server or worker after editing.
+# These come on top of the text-post checks every post already passes (length, format, language, banned words,
+# similarity, source rules, real-person heuristic in src/lib/content/validate.ts).
+# severity: fail = regenerate with the issue as feedback (then human review after maxRetries); warn = lowers confidence.
+
+# Numbers, years, percentages and quotes in a post that cites no research source.
+unsourcedClaims:
+  severity: fail
+  numbers: true        # standalone numbers of 2+ digits (thread numbering "1." is ignored)
+  years: true          # 1900-2099
+  percent: true        # 40%, 40 persen, 40 percent
+  quotes: true         # a quoted passage of 15+ characters
+
+# Claims no post may make (case-insensitive regular expressions, whole words).
+forbiddenClaims:
+  severity: fail
+  patterns:
+    - dijamin
+    - guaranteed
+    - 100% (aman|ampuh|berhasil|safe|effective)
+    - sembuh total
+    - cures?
+    - pasti (untung|kaya|cuan)
+    - risk[- ]free
+    - tanpa risiko
+    - get rich
+
+# Asking for engagement in exchange for engagement.
+engagementBait:
+  severity: fail
+  patterns:
+    - follow for follow
+    - f4f
+    - like for like
+    - l4l
+    - follback
+    - folbek
+    - retweet if
+    - rt (jika|kalau|if)
+    - like (jika|kalau|if)
+    - tag \d+ (teman|temen|friends?)
+    - share (ke|to) \d+
+
+# Links: only the brief's own link may appear (code appends it); any other URL fails.
+links:
+  severity: fail
+
+# The same first three words as a recent post of this campaign.
+repeatOpening:
+  severity: fail
+  lookback: 50
+
+# The same shape (line count, question hook, emoji ending, thread, numbered opening) as the last posts in a row.
+repeatStructure:
+  severity: warn
+  run: 3
+
+# Close calls that pass but lower confidence.
+nearMiss:
+  similarityRatio: 0.8   # word overlap at 80%+ of the similarity threshold
+  lengthRatio: 0.95      # 95%+ of the platform's character limit

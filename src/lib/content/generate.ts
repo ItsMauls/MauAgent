@@ -7,7 +7,7 @@ import type { CallCtx, PostBrief } from "@/lib/agents";
 import { roleMemoryBlock } from "@/lib/agents/memory";
 import { getPersona } from "@/lib/agents/persona";
 import { AiBudgetError, generateStructured } from "@/lib/ai/generate";
-import { contentVariants, normalizeType, SocialPosts, type Cta, type Note, type Persona, type PostLength } from "@/lib/agents/schemas";
+import { contentVariants, normalizeType, SocialPosts, type ContentType, type Cta, type Note, type Persona, type PostLength } from "@/lib/agents/schemas";
 import { contentSetup, type ContentConfig, type ContentSetup } from "./config";
 import { loadContext } from "./context";
 import { applyJudge, judgePrompt, JudgeVerdicts, type JudgeInput } from "./judge";
@@ -18,9 +18,10 @@ import { addToBatch, bannedHits, batchProblems, briefLanguage, fitToLimit, quest
 
 /**
  * `types` = the owner's picks in the brief form; empty means the weighted mix of every type. `siblings` = texts of
- * the other posts of the batch when one post is regenerated, so it does not repeat them.
+ * the other posts of the batch when one post is regenerated, so it does not repeat them. `variants` overrides the
+ * config's variants per post (automation campaigns).
  */
-export type BatchInput = PostBrief & { count: number; types?: string[]; siblings?: string[] };
+export type BatchInput = PostBrief & { count: number; types?: string[]; siblings?: string[]; variants?: number };
 
 /**
  * Config limited to the owner's picks (weights kept). A single pick is an explicit request for that type, so the
@@ -130,9 +131,28 @@ const merge = (v: Verdict, j: { reject: string[]; review: string[] }): Verdict =
   reasons: [...j.reject, ...v.reasons, ...j.review],
 });
 
-export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: ContentDeps = dbDeps) {
+/** Everything a batch loads once: config, context, persona, voice, research and the cross-post batch state. */
+export type Shared = Awaited<ReturnType<typeof prepareBatch>>;
+
+/** One post of a batch: its type and angles are already picked (by the batch loop or an automation plan). */
+export type PostSpec = { slot: number; type: ContentType; angles: string[]; cta: Cta | null; avoid?: string[] };
+
+export type PostResult = {
+  post: SocialPosts["posts"][number] | null;
+  /** Why no post survived (empty when one did). */
+  problem: string;
+  attempts: number;
+  costUsd: number;
+  /** Judge scores (0-10) of the chosen variant and the best other usable one, last attempt; null when not judged. */
+  scores: { best: number | null; second: number | null };
+  /** Review reasons the rule checks (layer 1, no LLM) gave the chosen variant. */
+  ruleReview: string[];
+};
+
+export async function prepareBatch(input: BatchInput, deps: ContentDeps = dbDeps) {
   const setup = deps.setup();
-  const cfg = onlyTypes(setup.config, input.types ?? [], input.count, input.length);
+  const typed = onlyTypes(setup.config, input.types ?? [], input.count, input.length);
+  const cfg = input.variants ? { ...typed, variants: input.variants } : typed;
   const topic = [input.topic, input.brand].filter(Boolean).join(" ");
   const sensitive = bannedHits(topic, setup.banned.sensitiveTopics);
   if (sensitive.length) throw new Error(`Topic refused as sensitive (${sensitive.join(", ")}): pick another topic`);
@@ -153,33 +173,187 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
     : NO_RESEARCH;
   if (research.errors.length) deps.log({ event: "content.research_failed", errors: research.errors });
 
-  const language = briefLanguage(input.topic, input.audience);
-  const recent = [...history.recent];
-  const recentAngles = setup.angles.historySize ? history.angles.slice(-setup.angles.historySize) : [];
-  let threads = history.threadsThisWeek;
-  const usedAngles = new Set<string>();
-  const usedUrls = new Set<string>();
   const siblings = input.siblings ?? [];
-  corpus = [...siblings, ...corpus];
   // At most 2 question hooks per batch, unless the owner picked only the question type.
   const onlyQuestions = Object.keys(cfg.types).length === 1 && "question" in cfg.types;
   const batch: BatchState = {
     texts: [...siblings], laughs: 0, laughQuota: Math.ceil(input.count / cfg.laughEvery), closingEmojis: [],
     questions: siblings.filter(questionHook).length, questionQuota: onlyQuestions ? Infinity : 2,
   };
-  const ctas = ctaPlan(input.count, input.cta);
-  // The link travels after the text, added by code so the model never writes (or mangles) a URL.
-  const linkFor = (cta: Cta | null) => (input.linkUrl && (input.mediaType === "link" || cta === "visit_link") ? `\n${input.linkUrl}` : "");
-  const posts: SocialPosts["posts"] = [];
-  const skipped: SocialPosts["skipped"] = [];
-  let costUsd = 0;
   const transcript: Note[] = [];
   const say = async (who: Note["who"], text: string, post: number) => {
     const n = { who, text, post };
     transcript.push(n);
     await deps.note?.(n);
   };
+  return {
+    input, setup, cfg, topic, entry, research, uploaded, history, persona, voice,
+    language: briefLanguage(input.topic, input.audience),
+    corpus: [...siblings, ...corpus],
+    batch,
+    usedUrls: new Set<string>(),
+    /** Posts accepted so far in this batch. */
+    posts: [] as SocialPosts["posts"],
+    transcript,
+    say,
+  };
+}
+
+/**
+ * Steps 3-5 for one post: n variants from the model, rule checks (layer 1), the judge (layer 2), keep the best. Retried
+ * up to maxAttempts when every variant fails or the call errors. An accepted post is added to `shared` (batch state,
+ * similarity corpus). AiBudgetError is rethrown.
+ */
+export async function writePost(shared: Shared, spec: PostSpec, ctx: CallCtx = {}, deps: ContentDeps = dbDeps): Promise<PostResult> {
+  const { input, setup, cfg, topic, research, uploaded, persona, voice, language, corpus, batch, usedUrls, posts, say } = shared;
+  const { slot, type, angles, cta } = spec;
+  const typeCfg = cfg.types[type];
+  if (!typeCfg) throw new Error(`Content type "${type}" is not allowed in this batch`);
+  const pool = typeCfg.research === "facts" ? research.facts : typeCfg.research === "news" ? research.news : [];
+  const facts = pool.filter((f) => !usedUrls.has(f.url));
+  const known = [uploaded, research.places, ...facts.map((f) => `${f.title}: ${f.summary}`)].filter(Boolean).join("\n");
+  const check = {
+    cfg, type, platforms: input.platforms, topic, context: known, banned: setup.banned, corpus: [...corpus, ...posts.map((p) => [p.text, ...p.thread].join("\n"))],
+    audience: input.audience, length: input.length, hashtags: input.hashtags, customTags: input.customTags, avoid: input.avoid,
+  };
+  // The link travels after the text, added by code so the model never writes (or mangles) a URL.
+  const link = input.linkUrl && (input.mediaType === "link" || cta === "visit_link") ? `\n${input.linkUrl}` : "";
+  /** Fits a part into every picked platform; a trim that removed over 20% is flagged for review. */
+  const fit = (t: string, suffix = "") => {
+    let body = t;
+    for (const p of input.platforms) body = fitToLimit(p, body, suffix).text.slice(0, -suffix.length || undefined);
+    return { text: body + suffix, trimmed: t.length ? 1 - body.length / t.length > 0.2 : false };
+  };
   const clip = (t: string, n = 140) => (t.length > n ? `${t.slice(0, n).trimEnd()}…` : t);
+
+  await say("socmedSpecialist", `Oke, post ${slot + 1} dari ${input.count}: tipe "${typeCfg.label}". Aku bikin ${cfg.variants} variant${angles.length ? ` dengan angle ini: ${angles.join("; ")}` : ""}.`, slot);
+  let avoid: string[] = spec.avoid ?? [];
+  let problem = "";
+  let timedOut = false;
+  let attempts = 0;
+  let costUsd = 0;
+  const log: Record<string, unknown>[] = [];
+  for (let attempt = 1; attempt <= cfg.maxAttempts; attempt++) {
+    attempts = attempt;
+    const key = (s: string) => (ctx.idemKey ? `${ctx.idemKey}:p${slot}:a${attempt}${s}` : undefined);
+    // After a timeout or HTTP error, ask for a single variant: a smaller reply is faster.
+    const n = timedOut ? 1 : cfg.variants;
+    if (attempt > 1) await say("socmedSpecialist", `Percobaan ke-${attempt} dari ${cfg.maxAttempts}, aku tulis ulang${avoid.length ? ` dan hindari: ${avoid.slice(0, 3).join("; ")}` : ""}.`, slot);
+    const prompt: PromptInput = {
+      brief: input, type, typeCfg, examples: setup.examples[type] ?? [], angles: angles.slice(0, n), n, persona: persona!, voice, language,
+      context: uploaded, places: research.places, facts, researchMissing: typeCfg.research !== "none" && !facts.length,
+      openers: setup.banned.openers, recent: [...posts.map((p) => p.text).reverse(), ...corpus].slice(0, 10),
+      laughAllowed: batch.laughs < batch.laughQuota, avoid,
+      cta, questionAllowed: (batch.questions ?? 0) < (batch.questionQuota ?? Infinity),
+    };
+
+    // Step 3: n variants from the model.
+    let variants;
+    try {
+      const out = await deps.write(prompt, { ...ctx, idemKey: key("") });
+      costUsd += out.costUsd;
+      const parsed = contentVariants(n).safeParse(out.payload);
+      if (!parsed.success) throw new Error(`the model reply did not match the variant schema (${parsed.error.issues[0]?.message})`);
+      variants = parsed.data.variants.map((x, i) => {
+        // Over the limit: trim to fit (the link stays whole) instead of throwing the variant away. A thread carries
+        // the link in its last part, so the hook keeps its marker at the end.
+        const head = fit(lines(x.text), x.thread.length ? "" : link);
+        const parts = x.thread.map((t, k) => fit(lines(t), k === x.thread.length - 1 ? link : ""));
+        return {
+          text: head.text, thread: parts.map((t) => t.text), confidence: x.confidence, needsSource: x.needsSource,
+          sourceNote: sourceNoteFor(x.sources, facts), urls: [...new Set(x.sources)].map((k) => facts[k - 1]?.url).filter(Boolean) as string[],
+          angle: angles[i] ?? null, trimmed: head.trimmed || parts.some((t) => t.trimmed),
+        };
+      });
+      timedOut = false;
+      await say("socmedSpecialist", variants.map((v, i) => `Variant ${i + 1}${v.angle ? ` (${v.angle})` : ""}: "${clip(v.text)}"${v.needsSource ? " [ada klaim tanpa sumber]" : ""}`).join("\n"), slot);
+    } catch (e) {
+      if (e instanceof AiBudgetError) throw e;
+      problem = `Generation failed: ${message(e)}`;
+      await say("socmedSpecialist", `Waduh, panggilan ke model gagal: ${message(e)}`, slot);
+      timedOut = true;
+      log.push({ attempt, error: problem });
+      if (attempt < cfg.maxAttempts) await deps.sleep(2000 * 2 ** (attempt - 1));
+      continue;
+    }
+
+    // Step 4, layer 1: rule checks per variant and across the batch.
+    const verdicts: Verdict[] = variants.map((v) => {
+      const r = validateVariant(v, check);
+      const b = batchProblems(v, batch);
+      if (b.length) return { status: "rejected", reasons: [...b, ...r.reasons] };
+      const note = `Trimmed to fit ${input.platforms.map((p) => (p === "twitter" ? "X" : "Threads")).join(" and ")}: check the meaning`;
+      return v.trimmed && r.status === "approved" ? { status: "needs_review", reasons: [note] } : v.trimmed ? { ...r, reasons: [...r.reasons, note] } : r;
+    });
+    const rules = [...verdicts];
+    const scores: (number | null)[] = variants.map(() => null);
+    await say("qc", verdicts.map((v, i) => `Variant ${i + 1} ${v.status === "rejected" ? `kurang cocok: ${v.reasons.slice(0, 2).join("; ")}` : v.status === "needs_review" ? `lumayan, tapi coba dicek: ${v.reasons.slice(0, 2).join("; ")}` : "aman, tidak ada masalah di aturan dasar."}`).join("\n"), slot);
+    // Layer 2: the judge reads what survived. If it cannot run, nothing is approved.
+    const live = verdicts.flatMap((v, i) => (v.status === "rejected" ? [] : [i]));
+    if (live.length) {
+      let judged: { reject: string[]; review: string[] }[];
+      try {
+        const out = await deps.judge(
+          { texts: live.map((i) => [variants[i].text, ...variants[i].thread].join("\n")), persona: persona!, voice, topic, context: known, temperature: cfg.judge.temperature },
+          { ...ctx, idemKey: key(":judge") },
+        );
+        costUsd += out.costUsd;
+        const scored = JudgeVerdicts.parse(out.payload);
+        judged = applyJudge(scored, live.length, cfg.judge.minScore);
+        live.forEach((vi, k) => (scores[vi] = scored.verdicts.find((x) => x.variant === k + 1)?.score ?? null));
+        await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Variant ${vi + 1} (${j.score}/10): ${j.reasons.slice(0, 2).join(" ")}` : `Variant ${vi + 1}: belum bisa aku nilai.`; }).join("\n"), slot);
+      } catch (e) {
+        if (e instanceof AiBudgetError) throw e;
+        judged = live.map(() => ({ reject: [], review: [`Quality judge unavailable: ${message(e)}`] }));
+        await say("qc", `Judge-nya nggak bisa jalan (${message(e)}), jadi belum ada yang aku approve otomatis.`, slot);
+      }
+      live.forEach((i, k) => (verdicts[i] = merge(verdicts[i], judged[k])));
+    }
+    log.push({ attempt, n, verdicts: verdicts.map((v) => ({ status: v.status, reasons: v.reasons })) });
+
+    // Step 5: keep the best, offer the other usable ones as alternatives.
+    const checked = variants
+      .map((v, i) => ({ v, verdict: verdicts[i], i }))
+      .filter((x) => x.verdict.status !== "rejected")
+      .sort((a, b) => RANK[a.verdict.status] - RANK[b.verdict.status] || SURE[a.v.confidence ?? "high"] - SURE[b.v.confidence ?? "high"]);
+    if (!checked.length) {
+      const reasons = [...new Set(verdicts.flatMap((v) => v.reasons))];
+      problem = `All ${variants.length} variants were rejected: ${reasons.join("; ")}`;
+      avoid = reasons.slice(0, 6);
+      await say("qc", `Semua ${variants.length} variant gagal. Aku balikin ke Socmed Specialist ya, tolong perhatikan: ${avoid.slice(0, 3).join("; ")}`, slot);
+      continue;
+    }
+    const [best, ...rest] = checked;
+    const post = {
+      text: best.v.text, thread: best.v.thread, type, angle: best.v.angle, status: best.verdict.status, reasons: best.verdict.reasons,
+      sourceNote: best.v.sourceNote, confidence: best.v.confidence, cta,
+      alternatives: rest.map(({ v, verdict }) => ({ text: v.text, thread: v.thread, angle: v.angle, sourceNote: v.sourceNote, confidence: v.confidence, status: verdict.status, reasons: verdict.reasons })),
+    };
+    posts.push(post);
+    await say("qc", `Aku pilih variant ${best.i + 1} (${best.verdict.status === "approved" ? "approved" : "perlu review"})${best.verdict.reasons.length ? `: ${best.verdict.reasons.slice(0, 2).join("; ")}` : ""}.${rest.length ? ` ${rest.length} variant lain disimpan sebagai alternatif.` : ""}`, slot);
+    addToBatch(batch, best.v);
+    best.v.urls.forEach((u) => usedUrls.add(u));
+    const others = rest.map((x) => scores[x.i]).filter((s): s is number => s !== null);
+    deps.log({ slot, type, angles, attempts, status: post.status, layers: log });
+    return {
+      post, problem: "", attempts, costUsd, scores: { best: scores[best.i], second: others.length ? Math.max(...others) : null },
+      ruleReview: rules[best.i].status === "needs_review" ? rules[best.i].reasons : [],
+    };
+  }
+  deps.log({ slot, type, angles, attempts, status: "skipped", layers: log });
+  return { post: null, problem: `${problem} (after ${attempts} attempt${attempts === 1 ? "" : "s"})`, attempts, costUsd, scores: { best: null, second: null }, ruleReview: [] };
+}
+
+export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: ContentDeps = dbDeps) {
+  const shared = await prepareBatch(input, deps);
+  const { cfg, setup, entry, history, posts, say } = shared;
+  const recent = [...history.recent];
+  const recentAngles = setup.angles.historySize ? history.angles.slice(-setup.angles.historySize) : [];
+  let threads = history.threadsThisWeek;
+  const usedAngles = new Set<string>();
+  const ctas = ctaPlan(input.count, input.cta);
+  const skipped: SocialPosts["skipped"] = [];
+  let costUsd = 0;
 
   for (let slot = 0; slot < input.count; slot++) {
     // Step 1: the type for this post, and one angle per variant.
@@ -187,137 +361,16 @@ export async function generatePosts(input: BatchInput, ctx: CallCtx = {}, deps: 
     if (!type) { skipped.push({ type: "-", reason: "No content type is allowed right now (weekly thread cap or repeat rule)" }); continue; }
     recent.push(type);
     if (isThreadType(cfg, type)) threads++;
-    const typeCfg = cfg.types[type]!;
     const angles = pickAngles(entry?.angles[type] ?? [], cfg.variants, usedAngles, recentAngles, deps.rand);
     angles.forEach((a) => usedAngles.add(a));
-    const pool = typeCfg.research === "facts" ? research.facts : typeCfg.research === "news" ? research.news : [];
-    const facts = pool.filter((f) => !usedUrls.has(f.url));
-    const known = [uploaded, research.places, ...facts.map((f) => `${f.title}: ${f.summary}`)].filter(Boolean).join("\n");
-    const check = {
-      cfg, type, platforms: input.platforms, topic, context: known, banned: setup.banned, corpus: [...corpus, ...posts.map((p) => [p.text, ...p.thread].join("\n"))],
-      audience: input.audience, length: input.length, hashtags: input.hashtags, customTags: input.customTags, avoid: input.avoid,
-    };
-    const cta = ctas[slot];
-    const link = linkFor(cta);
-    /** Fits a part into every picked platform; a trim that removed over 20% is flagged for review. */
-    const fit = (t: string, suffix = "") => {
-      let body = t;
-      for (const p of input.platforms) body = fitToLimit(p, body, suffix).text.slice(0, -suffix.length || undefined);
-      return { text: body + suffix, trimmed: t.length ? 1 - body.length / t.length > 0.2 : false };
-    };
-
-    await say("socmedSpecialist", `Oke, post ${slot + 1} dari ${input.count}: tipe "${typeCfg.label}". Aku bikin ${cfg.variants} variant${angles.length ? ` dengan angle ini: ${angles.join("; ")}` : ""}.`, slot);
-    let avoid: string[] = [];
-    let problem = "";
-    let timedOut = false;
-    let attempts = 0;
-    const log: Record<string, unknown>[] = [];
-    for (let attempt = 1; attempt <= cfg.maxAttempts; attempt++) {
-      attempts = attempt;
-      const key = (s: string) => (ctx.idemKey ? `${ctx.idemKey}:p${slot}:a${attempt}${s}` : undefined);
-      // After a timeout or HTTP error, ask for a single variant: a smaller reply is faster.
-      const n = timedOut ? 1 : cfg.variants;
-      if (attempt > 1) await say("socmedSpecialist", `Percobaan ke-${attempt} dari ${cfg.maxAttempts}, aku tulis ulang${avoid.length ? ` dan hindari: ${avoid.slice(0, 3).join("; ")}` : ""}.`, slot);
-      const prompt: PromptInput = {
-        brief: input, type, typeCfg, examples: setup.examples[type] ?? [], angles: angles.slice(0, n), n, persona, voice, language,
-        context: uploaded, places: research.places, facts, researchMissing: typeCfg.research !== "none" && !facts.length,
-        openers: setup.banned.openers, recent: [...posts.map((p) => p.text).reverse(), ...corpus].slice(0, 10),
-        laughAllowed: batch.laughs < batch.laughQuota, avoid,
-        cta, questionAllowed: (batch.questions ?? 0) < (batch.questionQuota ?? Infinity),
-      };
-
-      // Step 3: n variants from the model.
-      let variants;
-      try {
-        const out = await deps.write(prompt, { ...ctx, idemKey: key("") });
-        costUsd += out.costUsd;
-        const parsed = contentVariants(n).safeParse(out.payload);
-        if (!parsed.success) throw new Error(`the model reply did not match the variant schema (${parsed.error.issues[0]?.message})`);
-        variants = parsed.data.variants.map((x, i) => {
-          // Over the limit: trim to fit (the link stays whole) instead of throwing the variant away. A thread carries
-          // the link in its last part, so the hook keeps its marker at the end.
-          const head = fit(lines(x.text), x.thread.length ? "" : link);
-          const parts = x.thread.map((t, k) => fit(lines(t), k === x.thread.length - 1 ? link : ""));
-          return {
-            text: head.text, thread: parts.map((t) => t.text), confidence: x.confidence, needsSource: x.needsSource,
-            sourceNote: sourceNoteFor(x.sources, facts), urls: [...new Set(x.sources)].map((k) => facts[k - 1]?.url).filter(Boolean) as string[],
-            angle: angles[i] ?? null, trimmed: head.trimmed || parts.some((t) => t.trimmed),
-          };
-        });
-        timedOut = false;
-        await say("socmedSpecialist", variants.map((v, i) => `Variant ${i + 1}${v.angle ? ` (${v.angle})` : ""}: "${clip(v.text)}"${v.needsSource ? " [ada klaim tanpa sumber]" : ""}`).join("\n"), slot);
-      } catch (e) {
-        if (e instanceof AiBudgetError) throw e;
-        problem = `Generation failed: ${message(e)}`;
-        await say("socmedSpecialist", `Waduh, panggilan ke model gagal: ${message(e)}`, slot);
-        timedOut = true;
-        log.push({ attempt, error: problem });
-        if (attempt < cfg.maxAttempts) await deps.sleep(2000 * 2 ** (attempt - 1));
-        continue;
-      }
-
-      // Step 4, layer 1: rule checks per variant and across the batch.
-      const verdicts: Verdict[] = variants.map((v) => {
-        const r = validateVariant(v, check);
-        const b = batchProblems(v, batch);
-        if (b.length) return { status: "rejected", reasons: [...b, ...r.reasons] };
-        const note = `Trimmed to fit ${input.platforms.map((p) => (p === "twitter" ? "X" : "Threads")).join(" and ")}: check the meaning`;
-        return v.trimmed && r.status === "approved" ? { status: "needs_review", reasons: [note] } : v.trimmed ? { ...r, reasons: [...r.reasons, note] } : r;
-      });
-      await say("qc", verdicts.map((v, i) => `Variant ${i + 1} ${v.status === "rejected" ? `kurang cocok: ${v.reasons.slice(0, 2).join("; ")}` : v.status === "needs_review" ? `lumayan, tapi coba dicek: ${v.reasons.slice(0, 2).join("; ")}` : "aman, tidak ada masalah di aturan dasar."}`).join("\n"), slot);
-      // Layer 2: the judge reads what survived. If it cannot run, nothing is approved.
-      const live = verdicts.flatMap((v, i) => (v.status === "rejected" ? [] : [i]));
-      if (live.length) {
-        let judged: { reject: string[]; review: string[] }[];
-        try {
-          const out = await deps.judge(
-            { texts: live.map((i) => [variants[i].text, ...variants[i].thread].join("\n")), persona, voice, topic, context: known, temperature: cfg.judge.temperature },
-            { ...ctx, idemKey: key(":judge") },
-          );
-          costUsd += out.costUsd;
-          const scored = JudgeVerdicts.parse(out.payload);
-          judged = applyJudge(scored, live.length, cfg.judge.minScore);
-          await say("qc", live.map((vi, k) => { const j = scored.verdicts.find((x) => x.variant === k + 1); return j ? `Variant ${vi + 1} (${j.score}/10): ${j.reasons.slice(0, 2).join(" ")}` : `Variant ${vi + 1}: belum bisa aku nilai.`; }).join("\n"), slot);
-        } catch (e) {
-          if (e instanceof AiBudgetError) throw e;
-          judged = live.map(() => ({ reject: [], review: [`Quality judge unavailable: ${message(e)}`] }));
-          await say("qc", `Judge-nya nggak bisa jalan (${message(e)}), jadi belum ada yang aku approve otomatis.`, slot);
-        }
-        live.forEach((i, k) => (verdicts[i] = merge(verdicts[i], judged[k])));
-      }
-      log.push({ attempt, n, verdicts: verdicts.map((v) => ({ status: v.status, reasons: v.reasons })) });
-
-      // Step 5: keep the best, offer the other usable ones as alternatives.
-      const checked = variants
-        .map((v, i) => ({ v, verdict: verdicts[i], i }))
-        .filter((x) => x.verdict.status !== "rejected")
-        .sort((a, b) => RANK[a.verdict.status] - RANK[b.verdict.status] || SURE[a.v.confidence ?? "high"] - SURE[b.v.confidence ?? "high"]);
-      if (!checked.length) {
-        const reasons = [...new Set(verdicts.flatMap((v) => v.reasons))];
-        problem = `All ${variants.length} variants were rejected: ${reasons.join("; ")}`;
-        avoid = reasons.slice(0, 6);
-        await say("qc", `Semua ${variants.length} variant gagal. Aku balikin ke Socmed Specialist ya, tolong perhatikan: ${avoid.slice(0, 3).join("; ")}`, slot);
-        continue;
-      }
-      const [best, ...rest] = checked;
-      posts.push({
-        text: best.v.text, thread: best.v.thread, type, angle: best.v.angle, status: best.verdict.status, reasons: best.verdict.reasons,
-        sourceNote: best.v.sourceNote, confidence: best.v.confidence, cta,
-        alternatives: rest.map(({ v, verdict }) => ({ text: v.text, thread: v.thread, angle: v.angle, sourceNote: v.sourceNote, confidence: v.confidence, status: verdict.status, reasons: verdict.reasons })),
-      });
-      await say("qc", `Aku pilih variant ${best.i + 1} (${best.verdict.status === "approved" ? "approved" : "perlu review"})${best.verdict.reasons.length ? `: ${best.verdict.reasons.slice(0, 2).join("; ")}` : ""}.${rest.length ? ` ${rest.length} variant lain disimpan sebagai alternatif.` : ""}`, slot);
-      addToBatch(batch, best.v);
-      best.v.urls.forEach((u) => usedUrls.add(u));
-      problem = "";
-      break;
+    const r = await writePost(shared, { slot, type, angles, cta: ctas[slot] }, ctx, deps);
+    costUsd += r.costUsd;
+    if (!r.post) {
+      skipped.push({ type, reason: r.problem });
+      await say("qc", `Post ${slot + 1} aku lewati setelah ${r.attempts} kali percobaan.`, slot);
     }
-    if (problem) {
-      skipped.push({ type, reason: `${problem} (after ${attempts} attempt${attempts === 1 ? "" : "s"})` });
-      await say("qc", `Post ${slot + 1} aku lewati setelah ${attempts} kali percobaan.`, slot);
-    }
-    deps.log({ slot, type, angles, attempts, status: problem ? "skipped" : posts[posts.length - 1].status, layers: log });
   }
 
   if (!posts.length) throw new Error(`No usable post: ${skipped.map((s) => `${s.type}: ${s.reason}`).join(" | ").slice(0, 900)}`);
-  return { payload: SocialPosts.parse({ posts, skipped, transcript }), costUsd };
+  return { payload: SocialPosts.parse({ posts, skipped, transcript: shared.transcript }), costUsd };
 }

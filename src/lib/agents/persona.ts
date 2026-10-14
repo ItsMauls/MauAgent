@@ -9,11 +9,12 @@ import videographer from "./personas/videographer.json";
 import postProduction from "./personas/postProduction.json";
 import accountTeam from "./personas/accountTeam.json";
 import socmedSpecialist from "./personas/socmedSpecialist.json";
+import postQc from "./personas/postQc.json";
 
 export const SYSTEM_ID = "You are part of a creative agency. All output in English. Vertical 9:16 video for Reels/TikTok.";
 
 export const DEFAULT_PERSONAS: Record<AgentRole, Persona> = {
-  accountManager, creativeDirector, artDirector, producer, videographer, postProduction, accountTeam, socmedSpecialist,
+  accountManager, creativeDirector, artDirector, producer, videographer, postProduction, accountTeam, socmedSpecialist, postQc,
 };
 
 const GUARDRAILS = [

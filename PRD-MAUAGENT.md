@@ -1,7 +1,7 @@
 # PRD: MauAgent — AI Multi-Agent Creative Agency Automation
 
-Version: 2.0 · Date: 14 October 2026 · Owner: Maulana Ibrahim
-Supersedes v1.0 (11 Oct 2026). v2.0 describes the product **as built**; where it differs from v1.0, the reason is in `DECISIONS.md`.
+Version: 2.1 · Date: 14 October 2026 · Owner: Maulana Ibrahim
+Supersedes v2.0 (same day) and v1.0 (11 Oct 2026). v2.0 described the product **as built**. v2.1 adds automation campaigns (F16) and replaces F11's "every post needs the owner's Approve" with a server-side approval policy. Where the product differs from v1.0, the reason is in `DECISIONS.md`.
 
 > Note for Claude Code or any coding agent: read this document before writing code. When a decision is not covered here, pick the simplest option, record it in `DECISIONS.md` and continue. `DECISIONS.md` has the detail behind every line below.
 
@@ -11,10 +11,11 @@ Supersedes v1.0 (11 Oct 2026). v2.0 describes the product **as built**; where it
 
 MauAgent mimics how a real creative agency works. One agency role = one AI agent, and the agents run in sequence. The user (the agency owner) acts as the Client: gives a brief, then approves, revises or regenerates the result. After approval, content is published through Buffer to the connected social channels, and separate pages track trends, performance, pipeline status and cost.
 
-MauAgent produces two kinds of content:
+MauAgent produces three kinds of content:
 
 1. **Video campaigns** (9:16 short video for Instagram and TikTok) through the full agent pipeline.
 2. **Text posts** (single posts and threads for X and Threads) generated in batches by the Socmed Specialist, approved one by one, then scheduled in Buffer.
+3. **Automation campaigns**: text posts for X and Threads at scale (1 to `AUTOMATION_MAX_POSTS`, default 2000) over a date range. The Post QC agent checks every post; confident posts are approved automatically and the rest go to the owner.
 
 Video pipeline:
 
@@ -30,7 +31,7 @@ Client (user) → Account Manager → Creative Director → Art Director
 2. Every agent produces a structured artifact for its role; the next agent depends only on that artifact (plus curated memory and the creative kit).
 3. Controlled cost: every spend is a `CostEntry`, estimates show before any regenerate, and budget caps are enforced in code.
 4. Two video sources, mixable per shot: Seedance API (automatic) and Manual Upload (permanent mode; a failed Seedance shot opens an upload slot).
-5. Text posts that sound like the owner: type mix, owner's writing voice, layered quality gate, per-post approval.
+5. Text posts that sound like the owner: type mix, owner's writing voice, layered quality gate, and a stored approval for every post (the owner's, or the Post QC agent's under a campaign review policy).
 6. Publishing through one provider (Buffer) for Instagram, TikTok, X and Threads.
 7. Pages to run the agency: Boards, Trends, Briefs, Campaigns, Analytics, Connections, Settings.
 
@@ -172,7 +173,10 @@ Text-only for now: captions, hashtags, brand-safety checklist and self score fro
 - Quality gate in layers: format and length per platform, language check, banned words, similarity against the last 30 days, source rules, real-person heuristic, then an LLM judge. Educational and data posts name their own source and confidence and are always reviewed (sources are not verified; the UI says so).
 - Optional Tavily research (facts from credible domains, or recent news).
 - Owner's writing voice from pasted tweets (one LLM call, stored in `Setting.writingVoice`); context files (notes as text, pictures described once by a vision model).
-- **Every post needs the owner's Approve** before it can be pushed to Buffer (enforced server-side). Reject removes it from the slots; Regenerate rewrites one post.
+- **Approval rule (changed in v2.1):** a post can be pushed to Buffer only with a **stored approval record**, checked server-side.
+  - Socmed Specialist batch: the record is the owner's Approve (enforced in `pushDrafts`).
+  - Automation campaign: the record is either the owner's decision or a Post QC auto-approval under the campaign's review policy (F16), stored with a policy snapshot (`assertApproved`).
+- Reject removes a post from the slots; Regenerate rewrites one post.
 - Schedule panel: slots in the owner's timezone, draft first then schedule; a second press never double-posts.
 
 ### F12. Trends (`/trends`)
@@ -192,9 +196,38 @@ Text-only for now: captions, hashtags, brand-safety checklist and self score fro
 ### F15. Agent personas and memory
 Persona (tone and perspective only) per role, versioned in `AgentProfile` with JSON defaults; three memory layers (episodic, lesson, procedural) with redaction, ranked recall inside pipeline runs only, and experience/seniority computed on read.
 
+### F16. Automation campaigns (`/campaigns/automation`)
+- **Separate model** from the video Campaign:
+  - `AutomationCampaign`: goal, plan settings, review policy, QC settings, generation settings, budget cap, warning %, status, seed.
+  - `CampaignPost`: one row per slot and account.
+  - Spend is linked through `CostEntry.automationCampaignId`. The video pipeline is untouched.
+- **Cross-posting:** one slot = one generated text, sent to every selected X/Threads account at its own time. The target counts texts.
+- **Form** (one page): accounts, date range, total or rate, pillars, audience, language, CTA, KPI target, schedule limits (max per day, active hours, minimum gap, quiet days), review policy, QC threshold, variants, horizon and budget. A live feasibility check (a shortfall blocks creation and is re-checked on the server) and a cost estimate.
+- **Planner** (deterministic, seeded, no LLM):
+  - Every slot is fully specified up front: time per account, type, angles, pillar, CTA.
+  - Posts are spread evenly over the active hours with a small jitter, and keep the minimum gap per account.
+  - The type mix follows the `content-types.yaml` weights, with the anti-repeat rule and the weekly thread cap applied across the whole plan.
+  - Scheduling is "best times for the audience" only: nothing is built to make automation look human or to avoid detection, and every post is `aiAssisted`.
+- **Post QC agent** (role `postQc`, with its own model in `/settings/ai`):
+  - Layer 1: deterministic rules from `config/qc-rules.yaml`, on top of the text-post checks. They cover unsourced numbers, dates and quotes, forbidden claims, engagement bait, foreign links, and repeated openings and structure.
+  - Layer 2: an LLM verdict (pass / fail / uncertain) with per-rule results, issues and a score.
+  - Confidence is a documented formula over the judge scores, variant spread, source quality, near misses and judge/rule agreement, never the raw LLM number.
+  - A second QC sample runs only for borderline posts.
+- **Decision table:**
+  - A hard-rule fail regenerates with the issues as feedback (up to 2 times), then goes to review.
+  - A pass with confidence ≥ the threshold (default 0.8), on a type not forced to review, is auto-approved.
+  - Everything else goes to review.
+  - Review policies are `qc_auto` (default) or `manual_all`; there is no mode without QC.
+  - By default, educational and story posts and posts that may name a real person are reviewed (editable per campaign).
+- **Generation** is just in time: only posts due within the horizon (default 10 days) are written, topped up by a daily Inngest cron and a "Generate now" button. It runs in chunks of 8, one step per post, with stable idempotency keys, so a retry never re-bills. Pause, resume and cancel work at any time.
+- **Pilot:** the first 10 posts are always reviewed. The Overview shows the measured cost per post, a re-estimate for the whole campaign and QC-vs-human agreement. "Scale up" continues.
+- **Budget:** the monthly cap first, then the campaign cap, checked in code before each post. A warning shows at the warning %, and generation pauses automatically at 100%.
+- **Owner decisions** on reviewed posts are stored (with agreement vs QC) and fed to agent feedback and memory.
+- **Open (phases 3-5):** review inbox with shortcuts, Buffer push window with a shared rate-limit bucket and kill switch, calendar, tracking dashboard.
+
 ### Sidebar
 
-Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikTok, X, Threads) · Briefs (Library) · Campaigns (Approval, Publishing, Artifacts & results) · Analytics · Connections. Account menu: Accounts, Settings, Log out.
+Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikTok, X, Threads) · Briefs (Library) · Campaigns (Approval, Automation, Publishing, Artifacts & results) · Analytics · Connections. Account menu: Accounts, Settings, Log out.
 
 ---
 
@@ -208,6 +241,7 @@ Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikT
 | Library | `CreativeAsset` (character, location, style; talent = character), `ContentFile` |
 | Trends | `TrendSourceSettings`, `TrendRun`, `TrendSignal` |
 | Publishing | `SocialAccount`, `PublishJob` (campaign video and text posts), `MetricSnapshot`, `IntegrationStatus` |
+| Automation | `AutomationCampaign`, `CampaignPost` (one per slot and account; links to `PublishJob`); `CostEntry.automationCampaignId` |
 
 `Artifact.campaignId` and `CostEntry.campaignId` are nullable (direct tasks and trend runs have no campaign).
 
@@ -235,6 +269,7 @@ Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikT
 | 2 | Trend Scout (Apify, TikTok), metrics from Buffer, Analytics, Costs | Done for TikTok trends and Buffer metrics; X and Threads trends not built |
 | 2.5 | Boards, role workspaces, direct tasks, personas and memory, feedback, archive, Agent Roles grouping | Done |
 | 2.6 | Text posts for X and Threads: content types, quality gate, voice, research, per-post approval, Buffer scheduling | Done |
+| 2.7 | Automation campaigns (F16). Phase 1: schema, planner, feasibility, form, plan view. Phase 2: Post QC agent, confidence, decision table, just-in-time worker, budget gates, pilot | Phases 1-2 done (pilot not run yet); phases 3-5 (review inbox, Buffer push window and kill switch, calendar, tracking) open |
 | 3 | Move video storage fully to Cloudinary; ElevenLabs audio; multimodal QC; vidIQ; direct Threads; Trigger.dev parity and cutover; deploy; performance feedback to the Creative Director; A/B hooks; multi-brand | Open |
 
 Open work, in order: finish the S3 → Cloudinary migration; Post-production edit notes and audio; multimodal QC; Trigger.dev cutover decision; deployment.
@@ -249,11 +284,12 @@ src/lib/agents/     # callLlm, personas, memory, Zod schemas
 src/lib/ai/         # OpenRouter client, failover, effort, image, settings
 src/lib/boards/     # roles, tasks, status, archive, outcome, feedback
 src/lib/content/    # text-post pipeline (types, prompt, validate, judge, research)
+src/lib/automation/ # automation campaigns: planner, Post QC rules/judge/confidence, pipeline, worker
 src/lib/providers/  # buffer, apify-tiktok-trends, seedance, instagram, tiktok
 src/lib/workflows/  # Inngest functions (pipeline, publish, sync, metrics, trends)
 src/lib/media/      # FFmpeg cut and ffprobe validation
 src/trigger/        # Trigger.dev tasks and queues (evaluation)
-config/             # content-types, angles, banned (YAML)
+config/             # content-types, angles, banned, qc-rules (YAML)
 prisma/             # schema, migrations, seeds
 DECISIONS.md  PRD-MAUAGENT.md  docs/
 ```

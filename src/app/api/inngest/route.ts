@@ -11,8 +11,9 @@ import { bufferSync } from "@/lib/workflows/bufferSync";
 import { bufferMetrics } from "@/lib/workflows/bufferMetrics";
 import { scheduleApply } from "@/lib/workflows/scheduleApply";
 import { bufferPostsSync } from "@/lib/workflows/bufferPostsSync";
+import { automationChunk, automationTopup } from "@/lib/workflows/automationGenerate";
 
 // Post-production (FFmpeg) runs inside this request; raise the limit when deploying to serverless.
 export const maxDuration = 300;
 
-export const { GET, POST, PUT } = serve({ client: inngest, functions: [campaignPipeline, agentEpisodes, accountsRefresh, integrationsHealth, agentTask, trendScout, publishJob, bufferSync, bufferMetrics, scheduleApply, bufferPostsSync] });
+export const { GET, POST, PUT } = serve({ client: inngest, functions: [campaignPipeline, agentEpisodes, accountsRefresh, integrationsHealth, agentTask, trendScout, publishJob, bufferSync, bufferMetrics, scheduleApply, bufferPostsSync, automationTopup, automationChunk] });

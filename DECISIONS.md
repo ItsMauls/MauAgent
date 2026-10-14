@@ -675,3 +675,129 @@ Bulk text-post campaigns for X and Threads (1 to `AUTOMATION_MAX_POSTS`, default
   local DB: targets 1, 300, 2000 and a 3/day rate created full plans; an over-capacity goal, a target above the max and
   an unknown account were refused. Probe rows were removed afterwards. **Not verified in the browser:** the running dev
   server holds the old Prisma client (the engine DLL rename failed again), so it must be restarted first.
+
+### Phase 2: Post QC agent, generation worker, budget, pilot
+- **`generatePosts` was split, not forked.** `prepareBatch` (setup, context, history, corpus, persona, voice, research,
+  batch state) and `writePost` (variants → rule checks → judge → best variant, with the attempt loop) are the same code
+  the Socmed Specialist batch runs. `generatePosts` now picks type and angles and calls `writePost`. All 51 content
+  tests pass unchanged. `writePost` also returns the judge scores of the chosen variant and the runner-up and the rule
+  checks' own review reasons, which QC needs. `BatchInput.variants` overrides the variants per post.
+- **One Inngest step per slot, not one per chunk** (deviation from the brief). A chunk of 8 posts × 3-4 LLM calls in
+  one step would exceed the 300 s request limit, and a per-slot step resumes exactly at the slot that failed. The chunk
+  is still the fan-out unit:
+  - `automation-topup` (daily cron 02:00 Asia/Jakarta + "Generate now") atomically claims the slots due within
+    `horizonDays` (planned → generating; the pilot claims its flagged slots) and sends one `automation/chunk` per
+    `chunkSize` slots.
+  - `automation-chunk` runs at most 4 at once overall and 2 per campaign; topup runs one at a time per campaign.
+  - The chunk event id carries the claim time, so a slot released and claimed again later is not dropped by
+    Inngest's 24 h event dedup.
+  - Known limit: in the worst case one slot step takes several minutes (3 attempts inside `writePost` × up to 3 QC
+    rounds, 90 s timeout per call). It is typically well under a minute. If it bites, split the QC rounds into their own steps.
+- **Idempotency:** every call's idemKey is `auto:<campaignId>:s<slot>:r<round>` + `:p<slot>:a<attempt>` (writer),
+  `…:judge`, `…:qc`, `…:qc2`.
+  - A step retry repeats the same keys, so `generateStructured` returns the stored outputs and bills nothing twice.
+  - Type and angles are fixed in the plan, so a retry can never pick up the cached variants of another type (a gap in
+    the batch flow, where the type is re-picked at random).
+  - A manual Regenerate bumps `retryCount`, so its calls get fresh keys; `maxRetries` counts from there.
+- **Each step runs `prepareBatch` itself**, because in-memory state does not survive between Inngest steps. Batch
+  checks run against a rolling window: the campaign's last `chunkSize` texts are passed as `siblings` (repeated
+  openings, question quota). The similarity corpus is the campaign's own posts plus every PublishJob text of the last
+  30 days, not only the last 50 artifacts. Research is cached per query and day (`cachedSearch`), so it runs once per
+  pillar per day per process.
+- **The campaign language** reaches the writer as an audience signal ("(international, English)" / "(Indonesia)"),
+  which `briefLanguage` already reads. No new prompt branch.
+- **Post QC role** (`postQc`):
+  - Registered as an `AGENT_ROLES` entry, a persona (`personas/postQc.json`, Saras: strict, says "uncertain" rather
+    than guess), a Boards role (Delivery, under the Socmed Specialist) and an `AI_ROLES` entry.
+  - `socmedSpecialist` and `contentJudge` were added to `AI_ROLES` too, so the writer, the judge and QC can each get
+    their own model in `/settings/ai`. A hint there recommends a different model for QC (self-agreement bias).
+  - The persona row is created by `npm run db:seed` (v1 only for roles without one); until then the JSON default is used.
+- **QC layer 1** (no LLM, `config/qc-rules.yaml`, zod-validated). Hard fails:
+  - unsourced numbers, years, percentages and quotes (only when the post cites no research item; thread numbering
+    and clock times are ignored);
+  - forbidden claims and engagement bait;
+  - links other than the brief's;
+  - a repeated opening vs the campaign's last 50 posts.
+
+  A repeated structure is a warning. Near misses (word overlap ≥ 80% of the similarity threshold, length ≥ 95% of
+  the limit) pass but lower confidence. Hashtag policy and everything else `validateVariant` checks are not repeated:
+  those already rejected the variant inside `writePost`. `validateVariant`'s **review** reasons (possible real person,
+  story, sensitive words, language mismatch, a heavy trim) force human review. A hard fail regenerates **before** the
+  QC judge is paid for.
+- **QC layer 2:** `generateStructured("postQc", …, QcVerdict)` returns a verdict (pass | fail | uncertain),
+  per-rule results, issues, a suggested fix and a score 0-10. The one repair round comes from `generateStructured`.
+  The prompt treats the post as data and asks for "uncertain" when unsure. A QC error never approves: verdict null →
+  review.
+- **Confidence** (`confidence()` in `src/lib/automation/qc.ts`; inputs stored in `qcReport.confidenceInputs`):
+  `0.40·qc + 0.15·gen + 0.10·margin + 0.15·source + 0.20·agree − 0.08·nearMisses(≤3)`, clamped to 0-1.
+  - qc = QC score / 10 (the lower of two samples).
+  - gen = the text-post judge's score of the chosen variant / 10.
+  - margin = the chosen variant's lead over the next usable one, / 3 (0.5 with one variant).
+  - source = 1 for types without source rules; otherwise high 1, medium 0.6, low 0.2, no source 0.
+  - agree = rules pass and QC passes: 1; QC uncertain: 0.5; else 0. Halved when two samples disagree.
+
+  A perfect LLM score alone gives at most 0.55, so the model's own number can never auto-approve a post by itself.
+- **Second QC sample only for borderline passes** (|confidence − threshold| ≤ 0.1, temperature 0.4). The stricter of
+  the two verdicts counts.
+- **Decision table** (`decide()`, pure):
+  1. A hard fail regenerates with the issues as feedback until `maxRetries`, then needs review with the notes.
+  2. A pilot post, `manual_all`, a forced type or a forced reason → review.
+  3. QC pass + confidence ≥ threshold → auto-approve.
+  4. Anything else → review.
+
+  There is no mode without QC.
+- **Approval record:**
+  - An auto-approved slot gets `approvalSource qc_auto`, `approvedAt` and a snapshot of the policy, the QC config and
+    the confidence. The owner's approve gets `approvalSource human` and a snapshot.
+  - `assertApproved` / `approvalProblem` (`src/lib/automation/status.ts`) refuse a post unless it has status
+    approved, a source, a snapshot and text. Phase 3's push to Buffer is the only path for these posts and must call
+    it per post.
+  - The Socmed Specialist batch keeps its human Approve check in `pushDrafts` (that is the "human" policy).
+- **Owner decisions** (`decideSlot`): approve or reject a `needs_review` slot.
+  - Whether QC would have approved it on its own (verdict pass, confidence ≥ threshold, no hard fail) is stored as
+    `qcAgreed`; agreement is shown on the Overview for calibration.
+  - Each decision becomes feedback (and episodic memory) for Post QC: positive when QC agreed, negative when not. A
+    rejection is also negative feedback for the Socmed Specialist.
+  - `AgentFeedback.campaignId` points at video campaigns, so the automation campaign is named in the feedback text.
+- **Budget:**
+  - Before each slot, the all-provider monthly cap (`Setting.monthlyBudgetUsd`) and then the campaign cap are checked
+    with `budgetGate`, using the measured average cost per slot (or the PriceBook/model estimate before any slot is
+    measured).
+  - Blocked → the campaign pauses (`pauseReason budget` for the campaign cap, `quota` for a monthly cap) and its
+    claimed slots go back to planned. An `AiBudgetError` from the LLM caps pauses with `quota`.
+  - The warning at `warnAtPct` and the remaining-cost re-estimate are computed on read on the Overview. Spend per day
+    comes from CostEntry.
+  - **Spend per platform is not split:** a text is written once and cross-posted, so its cost is shared. Phase 5 can
+    split it by account count if wanted.
+- **Lifecycle** (`AUTOMATION_TRANSITIONS`, atomic `setAutomationStatus`): draft → piloting → awaiting_scale →
+  running ⇄ paused, and → cancelled from any open status. `completed` is reserved for phase 3, because it needs the
+  publishing outcome.
+  - Pressing a button twice is harmless: same-status moves are allowed and claims are atomic.
+  - Cancel marks ungenerated slots cancelled.
+  - A budget pause shows a cap field; a monthly-cap pause points to Settings.
+- **Pilot:** the first `pilotSize` slots (default 10) are flagged at creation and always reviewed. When no pilot slot
+  is open, the campaign moves to `awaiting_scale`. The Overview shows:
+  - each pilot post's QC verdict, confidence and cost;
+  - the measured cost per post, and the re-estimate for the rest against the cap;
+  - QC-vs-human agreement.
+
+  "Scale up" → running + topup.
+- **Minimal review in phase 2:** Approve / Reject / Regenerate buttons and the QC reasons on the Plan tab (filterable
+  by status), so the pilot can be calibrated. The full inbox with shortcuts and bulk actions is phase 3. Regenerate
+  works while piloting, waiting for scale-up or running: it clears the text and approval, bumps the round and sends
+  a one-slot chunk.
+- **Verified:**
+  - 8 QC tests: YAML errors, each hard rule, near misses, confidence bounds and direction, every decision-table row,
+    borderline, lifecycle, the approval guard.
+  - 8 pipeline tests with fake writers and judges: auto-approve with stable keys, the borderline second sample, pilot /
+    manual_all / forced type, QC uncertain / fail / error, regenerate-then-pass without paying for QC, exhaustion,
+    no usable variant, a budget error, regenerate rounds.
+  - 196 tests in total.
+  - Against the local DB, with no LLM calls: the lifecycle guard, the pilot claim in chunks, a second claim getting
+    nothing, release, owner decisions with snapshot, agreement and feedback, a refused second decision, regenerate
+    rounds, the pilot hand-off, and the CostEntry → campaign link. Probe rows were removed.
+  - The Inngest functions load with their concurrency settings.
+- **Not verified:**
+  - A real generation run: by design, no paid or free LLM call was made; the owner runs the 10-post pilot.
+  - The pages in a browser. The dev server still holds the old Prisma client: stop it, run `npx prisma generate`, and
+    restart it (and the Inngest dev server) before the pilot.

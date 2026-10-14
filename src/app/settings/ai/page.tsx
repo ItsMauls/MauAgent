@@ -162,6 +162,7 @@ export default async function AiSettingsPage() {
 
         <h2 className="pt-2 text-lg font-semibold">Per-agent overrides</h2>
         <p className="text-sm text-ink-2">Empty = use the defaults above. The Producer has no LLM (its estimate is deterministic code).</p>
+        <p className="text-sm text-ink-2">Tip: give Post QC a different model than the Socmed Specialist. A model judging its own writing tends to agree with itself.</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-ink-2">

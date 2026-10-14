@@ -198,7 +198,8 @@ function roleSummary(role: AgentRole, a: EpisodeInput): string | null {
       return Array.isArray(clips) ? `Final cut from ${clips.length} clips.` : null;
     }
     case "socmedSpecialist":
-      return null; // text posts are not campaign artifacts; its memory comes from owner chat
+    case "postQc":
+      return null; // text posts are not campaign artifacts; their memory comes from owner chat and feedback
     case "accountTeam": {
       const x = ApprovalPackage.safeParse(p(role));
       if (!x.success) return null;

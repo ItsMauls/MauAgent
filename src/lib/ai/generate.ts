@@ -15,10 +15,10 @@ import { getAiSettings, mergeAiConfig, modelMeta, type AiConfig, type AiSettings
 export const PROVIDER = "openrouter";
 
 /** Where a call comes from: cost attribution and retry safety. */
-export type CallCtx = { idemKey?: string; campaignId?: string | null; reason?: CostReason; step?: string };
+export type CallCtx = { idemKey?: string; campaignId?: string | null; automationCampaignId?: string | null; reason?: CostReason; step?: string };
 
 export type LedgerEntry = {
-  idemKey: string; campaignId: string | null; step: string; model: string; agentRole: string; reason: CostReason;
+  idemKey: string; campaignId: string | null; automationCampaignId?: string | null; step: string; model: string; agentRole: string; reason: CostReason;
   usd: number; tokensIn: number; tokensOut: number; tokensReasoning: number; keyLabel: KeyLabel; output: unknown;
 };
 
@@ -52,7 +52,7 @@ export const dbLedger: Ledger = {
     await db.costEntry.upsert({
       where: { idemKey: e.idemKey },
       create: {
-        idemKey: e.idemKey, campaignId: e.campaignId, step: e.step, provider: PROVIDER, model: e.model, agentRole: e.agentRole,
+        idemKey: e.idemKey, campaignId: e.campaignId, automationCampaignId: e.automationCampaignId ?? null, step: e.step, provider: PROVIDER, model: e.model, agentRole: e.agentRole,
         reason: e.reason, units, unitPrice: units ? e.usd / units : 0, usd: e.usd, tokensIn: e.tokensIn, tokensOut: e.tokensOut,
         tokensReasoning: e.tokensReasoning, keyLabel: e.keyLabel, output: (e.output ?? undefined) as Prisma.InputJsonValue | undefined,
       },
@@ -172,7 +172,7 @@ export async function generateStructured<T extends z.ZodTypeAny>(role: string, p
     const usd = Number(res.usage?.cost ?? 0) || 0;
     costUsd += usd;
     await ledger.record({
-      idemKey: `${base}:c${++calls}`, campaignId: opts.campaignId ?? null, step: opts.step ?? role, model: res.model ?? cfg.model,
+      idemKey: `${base}:c${++calls}`, campaignId: opts.campaignId ?? null, automationCampaignId: opts.automationCampaignId ?? null, step: opts.step ?? role, model: res.model ?? cfg.model,
       agentRole: role, reason: opts.reason ?? "initial", usd, keyLabel,
       tokensIn: res.usage?.prompt_tokens ?? 0, tokensOut: res.usage?.completion_tokens ?? 0,
       tokensReasoning: res.usage?.completion_tokens_details?.reasoning_tokens ?? 0,

@@ -31,6 +31,7 @@ export const ROLES: BoardRole[] = [
   { slug: "storyboard-artist", group: "creative", parent: "art-director", label: "Storyboard Artist", agentRole: "storyboardArtist", icon: "view_timeline", blurb: "Turns the Art Director's shot list into timed storyboard panels." },
   { slug: "producer", group: "planning", parent: "art-director", label: "Producer", agentRole: "producer", icon: "request_quote", blurb: "Production plan with a deterministic cost estimate." },
   { slug: "post-production", group: "production", parent: "content-creator", label: "Post-production", agentRole: "postProduction", icon: "movie_edit", blurb: "Edits clips into the final cut." },
+  { slug: "post-qc", group: "delivery", parent: "socmed-specialist", label: "Post QC", agentRole: "postQc", icon: "rule", blurb: "Strict check of automation campaign posts before they can be approved." },
   { slug: "qc", group: "delivery", parent: "post-production", label: "QC (Account Team)", agentRole: "accountTeam", icon: "verified", blurb: "Quality check, captions and the approval package." },
 ];
 

@@ -222,7 +222,7 @@ export type VoiceProfile = z.infer<typeof VoiceProfile>;
 
 /** Agent roles that have a persona (Producer/Videographer/Post-production only speak in deliberations). */
 export const AGENT_ROLES = [
-  "accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction", "accountTeam", "socmedSpecialist",
+  "accountManager", "creativeDirector", "artDirector", "producer", "videographer", "postProduction", "accountTeam", "socmedSpecialist", "postQc",
 ] as const;
 export const AgentRole = z.enum(AGENT_ROLES);
 export type AgentRole = z.infer<typeof AgentRole>;

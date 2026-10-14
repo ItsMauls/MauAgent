@@ -6,7 +6,7 @@ import { aiEnv } from "./env";
 import { EFFORTS, type Effort, type ReasoningMeta } from "./effort";
 
 /** LLM roles that can be tuned. `router` is the revision router; the Producer has no LLM (deterministic). */
-export const AI_ROLES = ["accountManager", "creativeDirector", "artDirector", "accountTeam", "router"] as const;
+export const AI_ROLES = ["accountManager", "creativeDirector", "artDirector", "accountTeam", "router", "socmedSpecialist", "contentJudge", "postQc"] as const;
 export type AiRole = (typeof AI_ROLES)[number];
 export const AI_ROLE_LABEL: Record<AiRole, string> = {
   accountManager: "Account Manager",
@@ -14,6 +14,9 @@ export const AI_ROLE_LABEL: Record<AiRole, string> = {
   artDirector: "Art Director",
   accountTeam: "Account Team (QC)",
   router: "Revision router",
+  socmedSpecialist: "Socmed Specialist (text posts)",
+  contentJudge: "Text-post judge",
+  postQc: "Post QC (automation)",
 };
 
 export const MAX_OUTPUT_TOKENS = { min: 256, max: 32000 };
