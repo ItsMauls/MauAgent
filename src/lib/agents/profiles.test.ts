@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { NAME_TO_ROLE, parseProfiles } from "./profiles";
+import { NAME_TO_ROLE, parseProfiles, Voice, VOICES } from "./profiles";
 
 const md = readFileSync("config/agent-profiles.md", "utf8");
 
@@ -23,4 +23,10 @@ test("parseProfiles: 11 agents in workflow order, mapped to existing role keys",
 
 test("parseProfiles is idempotent: parsing twice gives the same data", () => {
   assert.deepEqual(parseProfiles(md), parseProfiles(md));
+});
+
+test("every agent has a voice card that passes the schema", () => {
+  assert.deepEqual(Object.keys(VOICES).sort(), Object.values(NAME_TO_ROLE).sort());
+  for (const [role, v] of Object.entries(VOICES)) assert.ok(Voice.safeParse(v).success, role);
+  assert.equal(Voice.safeParse({ ...VOICES.postQc, signature: ["a", "b", "c", "d", "e"] }).success, false);
 });
