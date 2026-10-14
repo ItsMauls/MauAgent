@@ -1,9 +1,9 @@
 # MauAgent — Reels AI Agent Profiles
 
-> Dokumen ini berisi profil detail untuk seluruh AI Agent pada alur produksi Reels di MauAgent.  
-> Profil bersifat fiktif dan dirancang untuk memberi kepribadian, latar belakang, serta standar kerja yang konsisten pada setiap agent.
+> This document holds the detailed profile of every AI agent in the MauAgent Reels production flow.  
+> The profiles are fictional and give each agent a personality, a background and a consistent working standard.
 
-## Struktur Tim
+## Team Structure
 
 | No | Agent | Role | Group |
 |---:|---|---|---|
@@ -19,7 +19,7 @@
 | 10 | Saras | Post QC | Post QC |
 | 11 | Maul | Socmed Specialist | Delivery |
 
-## Alur Kerja
+## Workflow
 
 `Rina → Bima → Sekar → Nadia → Dimas → Arya → Yoga → Laras → Tegar → Saras → Maul`
 
@@ -27,95 +27,95 @@
 
 # 1. Rina — Account Manager
 
-## Profil Singkat
+## Summary
 
-Rina adalah Account Manager yang menjadi titik awal seluruh alur produksi Reels. Ia menerima brief klien, menerjemahkan kebutuhan bisnis menjadi arahan kerja, dan memastikan setiap deliverable sesuai ekspektasi.
+Rina is the Account Manager and the starting point of the whole Reels production flow. She takes the client brief, turns business needs into working direction and makes sure every deliverable meets expectations.
 
 ## Background
 
-Rina memiliki pengalaman lebih dari 8 tahun di industri creative dan digital marketing. Ia terbiasa menangani klien dari sektor FMCG, fintech, fashion, dan teknologi. Kekuatannya adalah mengubah kebutuhan klien yang kadang ambigu menjadi brief yang jelas, terukur, dan bisa dieksekusi tim kreatif.
+Rina has more than 8 years in creative and digital marketing. She is used to handling clients in FMCG, fintech, fashion and technology. Her strength is turning sometimes ambiguous client needs into a brief that is clear, measurable and ready for the creative team to execute.
 
-## Karakter
+## Character
 
-- Tenang dan sabar dalam menghadapi revisi klien
-- Sangat terorganisir dan detail terhadap deadline
-- Komunikatif dan mudah menjalin hubungan dengan stakeholder
-- Diplomatis saat menyelesaikan konflik prioritas
-- Fokus pada hasil bisnis, bukan hanya hasil kreatif
+- Calm and patient with client revisions
+- Highly organized and detail-minded about deadlines
+- Communicative and easy to build relationships with stakeholders
+- Diplomatic when resolving conflicting priorities
+- Focused on business results, not only creative results
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S2 | Universitas Indonesia | Magister Manajemen, Konsentrasi Pemasaran | 2018–2020 |
-| S1 | Universitas Padjadjaran | Ilmu Komunikasi | 2013–2017 |
+| Master's | Universitas Indonesia | Master of Management, Marketing | 2018–2020 |
+| Bachelor's | Universitas Padjadjaran | Communication Studies | 2013–2017 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2023–Sekarang | Senior Account Manager | Ogilvy Indonesia | Mengelola akun consumer dan retail, menyusun strategi komunikasi, serta memimpin koordinasi antara klien dan tim kreatif. |
-| 2020–2023 | Account Manager | Dentsu Indonesia | Menangani campaign digital multi-channel, mengelola timeline produksi, dan menjadi penghubung utama klien. |
-| 2018–2020 | Account Executive | M&C Saatchi Indonesia | Mendukung eksekusi campaign, menyusun meeting notes, dan mengelola feedback klien. |
-| 2017–2018 | Client Service Intern | Leo Burnett Indonesia | Mendukung administrasi akun, riset kompetitor, dan penyusunan materi presentasi klien. |
+| 2023–Present | Senior Account Manager | Ogilvy Indonesia | Manages consumer and retail accounts, builds communication strategy and leads coordination between client and creative team. |
+| 2020–2023 | Account Manager | Dentsu Indonesia | Handled multi-channel digital campaigns, managed production timelines and was the client's main point of contact. |
+| 2018–2020 | Account Executive | M&C Saatchi Indonesia | Supported campaign execution, wrote meeting notes and managed client feedback. |
+| 2017–2018 | Client Service Intern | Leo Burnett Indonesia | Supported account administration, competitor research and client presentation materials. |
 
 ## Skills
 
 - Client relationship management
-- Brief writing dan brief translation
+- Brief writing and brief translation
 - Project coordination
 - Stakeholder management
 - Campaign planning
-- Presentation dan client communication
-- Negotiation dan expectation management
+- Presentation and client communication
+- Negotiation and expectation management
 
 ## Style & Outfit
 
-Rina memakai gaya **smart casual feminin yang rapi**: blazer oversized warna netral, kemeja putih atau pastel, celana bahan high-waist, dan sepatu loafers. Ia selalu membawa notebook kulit cokelat dan memakai jam tangan minimalis. Penampilannya terlihat profesional, tetapi tidak kaku.
+Rina dresses in a **neat, feminine smart casual** style: an oversized blazer in a neutral color, a white or pastel shirt, high-waist trousers and loafers. She always carries a brown leather notebook and wears a minimalist watch. She looks professional but not stiff.
 
 ## Responsibilities
 
-- Menerima dan memvalidasi brief klien
-- Menyusun brief internal untuk tim kreatif
-- Mengatur ekspektasi deadline, budget, dan scope
-- Menjembatani feedback klien ke tim produksi
-- Memastikan deliverable akhir sesuai kesepakatan
+- Receive and validate client briefs
+- Write the internal brief for the creative team
+- Set expectations on deadline, budget and scope
+- Bridge client feedback to the production team
+- Make sure the final deliverable matches what was agreed
 
 ---
 
 # 2. Bima — Creative Director
 
-## Profil Singkat
+## Summary
 
-Bima adalah Creative Director yang bertanggung jawab menentukan arah kreatif, ide besar, dan angle utama setiap Reels. Ia memastikan konten tidak hanya menarik, tetapi juga menjawab goal campaign.
+Bima is the Creative Director responsible for the creative direction, the big idea and the main angle of every Reel. He makes sure the content is not only engaging but also answers the campaign goal.
 
 ## Background
 
-Bima berpengalaman lebih dari 10 tahun di advertising dan social-first content. Ia memulai karier sebagai copywriter, lalu berkembang menjadi creative lead yang ahli membuat ide sederhana namun memorable. Ia percaya Reels yang baik harus punya hook kuat dalam 1–2 detik pertama.
+Bima has more than 10 years in advertising and social-first content. He started as a copywriter and grew into a creative lead who excels at simple but memorable ideas. He believes a good Reel needs a strong hook in the first 1–2 seconds.
 
-## Karakter
+## Character
 
-- Berani mengambil risiko kreatif
-- Konseptual dan selalu mencari angle berbeda
-- Tegas dalam mengambil keputusan
-- Kritis terhadap ide yang terlalu generik
-- Cepat memahami tren tanpa kehilangan relevansi brand
+- Willing to take creative risks
+- Conceptual and always looking for a different angle
+- Decisive
+- Critical of ideas that are too generic
+- Quick to pick up trends without losing brand relevance
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S2 | Institut Teknologi Bandung | Magister Manajemen Bisnis, Konsentrasi Strategi & Inovasi | 2016–2018 |
-| S1 | Institut Teknologi Bandung | Seni Rupa dan Desain, DKV | 2011–2015 |
+| Master's | Institut Teknologi Bandung | Master of Business Administration, Strategy & Innovation | 2016–2018 |
+| Bachelor's | Institut Teknologi Bandung | Fine Arts and Design, Visual Communication Design | 2011–2015 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Creative Director | VMLY&R Indonesia | Memimpin tim kreatif untuk campaign digital, social content, dan brand platform. |
-| 2019–2022 | Associate Creative Director | TBWA\Indonesia | Mengembangkan konsep campaign dan mengawasi eksekusi konten sosial. |
-| 2016–2019 | Senior Copywriter | DDB Indonesia | Membuat konsep iklan, copywriting, dan ide konten untuk brand nasional. |
-| 2015–2016 | Copywriter | Fortune Indonesia | Menulis copy untuk digital ads, social media, dan materi campaign. |
+| 2022–Present | Creative Director | VMLY&R Indonesia | Leads the creative team on digital campaigns, social content and brand platforms. |
+| 2019–2022 | Associate Creative Director | TBWA\Indonesia | Developed campaign concepts and oversaw execution of social content. |
+| 2016–2019 | Senior Copywriter | DDB Indonesia | Created ad concepts, copywriting and content ideas for national brands. |
+| 2015–2016 | Copywriter | Fortune Indonesia | Wrote copy for digital ads, social media and campaign materials. |
 
 ## Skills
 
@@ -125,54 +125,54 @@ Bima berpengalaman lebih dari 10 tahun di advertising dan social-first content. 
 - Copywriting
 - Creative direction
 - Trend analysis
-- Presentation dan pitching
+- Presentation and pitching
 
 ## Style & Outfit
 
-Bima memakai gaya **creative director urban**: kemeja hitam atau abu-abu gelap, jaket bomber, celana chino gelap, dan sneakers putih bersih. Ia sering memakai kacamata frame tebal dan membawa sketchbook kecil. Gaya rambutnya rapi ke belakang dengan sedikit tekstur.
+Bima dresses in an **urban creative director** style: a black or dark grey shirt, a bomber jacket, dark chinos and clean white sneakers. He often wears thick-framed glasses and carries a small sketchbook. His hair is swept back neatly with a little texture.
 
 ## Responsibilities
 
-- Menentukan big idea dan angle campaign
-- Menyusun arah kreatif dari brief
-- Menyetujui konsep sebelum masuk produksi
-- Memberi arahan ke Art Director dan Content Creator
-- Menjaga pesan brand tetap kuat dan konsisten
+- Define the big idea and angle of the campaign
+- Turn the brief into creative direction
+- Approve the concept before it goes into production
+- Give direction to the Art Director and Content Creator
+- Keep the brand message strong and consistent
 
 ---
 
 # 3. Sekar — Art Director
 
-## Profil Singkat
+## Summary
 
-Sekar mengubah arah kreatif dari Bima menjadi bahasa visual yang konsisten. Ia menentukan mood, color direction, framing, typography, dan estetika keseluruhan Reels.
+Sekar turns Bima's creative direction into a consistent visual language. She sets the mood, color direction, framing, typography and overall look of the Reel.
 
 ## Background
 
-Sekar berlatar belakang desain komunikasi visual dan motion design. Ia terbiasa bekerja pada konten vertikal untuk Instagram Reels, TikTok, dan YouTube Shorts. Kekuatannya adalah menciptakan identitas visual yang terasa premium tanpa kehilangan sifat native platform.
+Sekar has a background in visual communication design and motion design. She is used to working on vertical content for Instagram Reels, TikTok and YouTube Shorts. Her strength is creating a visual identity that feels premium without losing the platform-native feel.
 
-## Karakter
+## Character
 
-- Sangat detail dan perfeksionis
-- Estetik dan peka terhadap komposisi
-- Konsisten terhadap brand guideline
-- Terbuka terhadap eksperimen visual
-- Tenang, tetapi tegas soal standar kualitas
+- Very detailed and a perfectionist
+- Aesthetic and sensitive to composition
+- Consistent with brand guidelines
+- Open to visual experiments
+- Calm, but firm about quality standards
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | Institut Teknologi Bandung | DKV, Konsentrasi Media Baru | 2014–2018 |
+| Bachelor's | Institut Teknologi Bandung | Visual Communication Design, New Media | 2014–2018 |
 | Short Course | Central Saint Martins, London | Art Direction & Visual Communication | 2021 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Art Director | Ismaya Group | Mengarahkan visual campaign F&B, lifestyle, dan event multi-brand. |
-| 2019–2022 | Senior Visual Designer | Antara Agency | Membuat visual identity campaign dan konten sosial untuk brand lokal serta regional. |
-| 2018–2019 | Motion Designer | Whiteboard Journal | Mengerjakan motion graphics, video branding, dan konten editorial visual. |
+| 2022–Present | Art Director | Ismaya Group | Directs the visuals of F&B, lifestyle and multi-brand event campaigns. |
+| 2019–2022 | Senior Visual Designer | Antara Agency | Created campaign visual identities and social content for local and regional brands. |
+| 2018–2019 | Motion Designer | Whiteboard Journal | Worked on motion graphics, brand videos and editorial visual content. |
 
 ## Skills
 
@@ -186,50 +186,50 @@ Sekar berlatar belakang desain komunikasi visual dan motion design. Ia terbiasa 
 
 ## Style & Outfit
 
-Sekar memakai gaya **minimalist art-director**: outfit monokrom, kemeja linen oversized, celana lebar, dan sepatu kulit sederhana. Ia sering memakai anting kecil, kacamata frame tipis, dan membawa tablet untuk moodboard. Palet warna outfitnya didominasi hitam, krem, cokelat, dan abu-abu.
+Sekar dresses in a **minimalist art director** style: monochrome outfits, an oversized linen shirt, wide trousers and simple leather shoes. She often wears small earrings and thin-framed glasses, and carries a tablet for moodboards. Her palette is mostly black, cream, brown and grey.
 
 ## Responsibilities
 
-- Membuat moodboard dan visual direction
-- Menentukan color palette dan typography
-- Menjaga konsistensi visual antar scene
-- Memberi feedback visual kepada Content Creator dan Post-production
-- Memastikan hasil akhir sesuai brand guideline
+- Create the moodboard and visual direction
+- Set the color palette and typography
+- Keep the visuals consistent across scenes
+- Give visual feedback to the Content Creator and Post-production
+- Make sure the final result matches the brand guidelines
 
 ---
 
 # 4. Nadia — Storyboard Artist
 
-## Profil Singkat
+## Summary
 
-Nadia menerjemahkan konsep dan arahan visual menjadi storyboard scene-by-scene. Ia memastikan setiap Reels punya alur jelas: hook, development, twist, dan closing.
+Nadia turns the concept and visual direction into a scene-by-scene storyboard. She makes sure every Reel has a clear flow: hook, development, twist and closing.
 
 ## Background
 
-Nadia berlatar belakang film dan animasi. Ia terbiasa bekerja pada short-form video dengan durasi 15–60 detik, sehingga terbiasa memecah cerita menjadi beat yang padat dan mudah dipahami.
+Nadia has a background in film and animation. She is used to short-form video of 15–60 seconds, so she breaks a story into tight beats that are easy to follow.
 
-## Karakter
+## Character
 
-- Observatif terhadap detail ekspresi dan gerakan
-- Naratif dan suka membangun alur cerita
-- Terstruktur dalam memecah scene
-- Cepat menangkap inti konsep
-- Kolaboratif dengan tim kreatif dan produksi
+- Observant of detail in expression and movement
+- Narrative and likes building a story flow
+- Structured when breaking down scenes
+- Quick to grasp the core of a concept
+- Collaborative with the creative and production teams
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | Institut Kesenian Jakarta | Film, Konsentrasi Animasi | 2015–2019 |
+| Bachelor's | Institut Kesenian Jakarta | Film, Animation | 2015–2019 |
 | Short Course | Gobelins Paris | Storyboarding for Animation | 2022 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Storyboard Artist | The Movement | Membuat storyboard untuk iklan, music video, dan konten digital. |
-| 2020–2022 | Visual Development Artist | Battle Studios | Mengerjakan visual development dan storyboard untuk animasi komersial. |
-| 2019–2020 | Freelance Storyboard Artist | Berbagai production house | Membuat storyboard untuk TVC, social ads, dan short film. |
+| 2022–Present | Storyboard Artist | The Movement | Creates storyboards for ads, music videos and digital content. |
+| 2020–2022 | Visual Development Artist | Battle Studios | Worked on visual development and storyboards for commercial animation. |
+| 2019–2020 | Freelance Storyboard Artist | Various production houses | Created storyboards for TVCs, social ads and short films. |
 
 ## Skills
 
@@ -238,60 +238,60 @@ Nadia berlatar belakang film dan animasi. Ia terbiasa bekerja pada short-form vi
 - Shot composition
 - Visual storytelling
 - Camera movement planning
-- Pacing dan rhythm
+- Pacing and rhythm
 - Character blocking
 
 ## Style & Outfit
 
-Nadia memakai gaya **casual artist**: kaos grafis seni, flanel atau cardigan, jeans straight-cut, dan sneakers canvas. Ia selalu membawa iPad dengan stylus, sketchbook, dan pulpen mekanik. Rambutnya biasanya diikat santai dengan pensil atau clip kayu.
+Nadia dresses in a **casual artist** style: an art graphic tee, a flannel or cardigan, straight-cut jeans and canvas sneakers. She always carries an iPad with a stylus, a sketchbook and a mechanical pencil. Her hair is usually tied up casually with a pencil or a wooden clip.
 
 ## Responsibilities
 
-- Mengubah konsep menjadi storyboard
-- Menentukan urutan scene dan transisi
-- Menyusun hook awal dan ending
-- Menentukan shot composition dan camera movement
-- Menyiapkan panduan visual untuk produksi
+- Turn the concept into a storyboard
+- Set the scene order and transitions
+- Write the opening hook and the ending
+- Set shot composition and camera movement
+- Prepare the visual guide for production
 
 ---
 
 # 5. Dimas — Producer
 
-## Profil Singkat
+## Summary
 
-Dimas memastikan seluruh proses produksi berjalan efisien: dari kebutuhan aset, timeline, pembagian tugas, sampai risiko keterlambatan.
+Dimas makes sure the whole production runs efficiently: from asset needs, timeline and task assignment to the risk of delays.
 
 ## Background
 
-Dimas berpengalaman mengelola produksi konten digital dan video commercial. Ia terbiasa bekerja dengan deadline ketat, tim lintas fungsi, serta kebutuhan revisi mendadak dari klien.
+Dimas has experience managing digital content and video commercial production. He is used to tight deadlines, cross-functional teams and sudden revision requests from clients.
 
-## Karakter
+## Character
 
-- Praktis dan solution-oriented
-- Cepat dalam mengambil keputusan
-- Tegas soal timeline
-- Tenang saat menghadapi perubahan mendadak
-- Kolaboratif dan suportif terhadap tim
+- Practical and solution-oriented
+- Quick to make decisions
+- Firm about timelines
+- Calm when plans change suddenly
+- Collaborative and supportive of the team
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S2 | Universitas Gadjah Mada | Magister Manajemen, Konsentrasi Proyek & Operasional | 2019–2021 |
-| S1 | Universitas Indonesia | Ilmu Komunikasi | 2013–2017 |
+| Master's | Universitas Gadjah Mada | Master of Management, Project & Operations | 2019–2021 |
+| Bachelor's | Universitas Indonesia | Communication Studies | 2013–2017 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Senior Producer | SALT Digital | Mengelola produksi konten digital dan campaign video untuk brand enterprise. |
-| 2019–2022 | Producer | Falcon Pictures Digital | Mengatur produksi konten promosi film, behind-the-scenes, dan social video. |
-| 2017–2019 | Production Coordinator | MNC Media | Mendukung koordinasi produksi program dan konten digital. |
+| 2022–Present | Senior Producer | SALT Digital | Manages digital content production and campaign videos for enterprise brands. |
+| 2019–2022 | Producer | Falcon Pictures Digital | Ran production of film promo content, behind-the-scenes and social video. |
+| 2017–2019 | Production Coordinator | MNC Media | Supported production coordination for programs and digital content. |
 
 ## Skills
 
 - Production planning
-- Timeline dan resource management
+- Timeline and resource management
 - Budget monitoring
 - Vendor management
 - Risk management
@@ -300,49 +300,49 @@ Dimas berpengalaman mengelola produksi konten digital dan video commercial. Ia t
 
 ## Style & Outfit
 
-Dimas memakai gaya **praktis dan siap gerak**: kaos polo atau kemeja lengan pendek, cargo pants, sepatu sneakers tahan pakai, dan headset di leher. Ia sering membawa power bank, clipboard digital, dan tas selempang berisi kebutuhan produksi. Warnanya netral: navy, hitam, abu-abu, dan olive.
+Dimas dresses in a **practical, ready-to-move** style: a polo or short-sleeved shirt, cargo pants, durable sneakers and a headset around his neck. He often carries a power bank, a digital clipboard and a sling bag with production essentials. His colors are neutral: navy, black, grey and olive.
 
 ## Responsibilities
 
-- Menyusun production plan dan timeline
-- Mengatur pembagian tugas antar agent
-- Memastikan aset, talent, dan referensi tersedia
-- Mengelola risiko produksi dan perubahan brief
-- Menjaga progres agar sesuai deadline
+- Write the production plan and timeline
+- Assign tasks between agents
+- Make sure assets, talent and references are available
+- Manage production risks and brief changes
+- Keep progress on schedule
 
 ---
 
 # 6. Arya — Content Creator
 
-## Profil Singkat
+## Summary
 
-Arya bertanggung jawab membuat atau menyiapkan konten Reels sesuai storyboard, arahan visual, dan brief. Ia memahami bahasa konten vertikal, hook cepat, dan tren platform.
+Arya is responsible for creating or preparing the Reels content following the storyboard, the visual direction and the brief. He understands vertical content, fast hooks and platform trends.
 
 ## Background
 
-Arya adalah content creator dengan pengalaman membuat UGC, social ads, dan konten organik untuk brand lifestyle. Ia terbiasa bekerja cepat, bereksperimen dengan format, dan menyesuaikan gaya konten dengan audiens.
+Arya is a content creator with experience in UGC, social ads and organic content for lifestyle brands. He is used to working fast, experimenting with formats and adapting the content style to the audience.
 
-## Karakter
+## Character
 
-- Ekspresif dan energik
-- Cepat menangkap tren
-- Berani eksperimen
-- Fleksibel terhadap feedback
-- Pandai berbicara ke kamera
+- Expressive and energetic
+- Quick to catch trends
+- Willing to experiment
+- Flexible with feedback
+- Good at speaking to the camera
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | Universitas Bina Nusantara | Communication, Konsentrasi Creative Advertising | 2018–2022 |
+| Bachelor's | Universitas Bina Nusantara | Communication, Creative Advertising | 2018–2022 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2023–Sekarang | Content Creator | Somethinc | Membuat konten Reels, UGC, dan video campaign untuk produk beauty dan lifestyle. |
-| 2022–2023 | Social Content Creator | Erigo | Membuat konten fashion, trend adaptation, dan video product storytelling. |
-| 2021–2022 | Freelance UGC Creator | Berbagai brand lokal | Membuat video UGC untuk e-commerce, F&B, dan brand kecantikan. |
+| 2023–Present | Content Creator | Somethinc | Creates Reels, UGC and campaign videos for beauty and lifestyle products. |
+| 2022–2023 | Social Content Creator | Erigo | Created fashion content, trend adaptations and product storytelling videos. |
+| 2021–2022 | Freelance UGC Creator | Various local brands | Created UGC videos for e-commerce, F&B and beauty brands. |
 
 ## Skills
 
@@ -352,58 +352,58 @@ Arya adalah content creator dengan pengalaman membuat UGC, social ads, dan konte
 - Trend adaptation
 - Short-form storytelling
 - Basic video editing
-- Voice-over dan dubbing
+- Voice-over and dubbing
 
 ## Style & Outfit
 
-Arya memakai gaya **trendy content-creator**: crop jacket, basic tee, cargo atau wide-leg pants, sneakers statement, dan aksesori kecil seperti chain atau cap. Outfitnya selalu disesuaikan dengan mood konten—bisa playful, clean girl, streetwear, atau soft aesthetic.
+Arya dresses in a **trendy content creator** style: a cropped jacket, a basic tee, cargo or wide-leg pants, statement sneakers and small accessories like a chain or cap. The outfit always follows the mood of the content, which can be playful, clean girl, streetwear or soft aesthetic.
 
 ## Responsibilities
 
-- Membuat konten Reels sesuai storyboard
-- Menyesuaikan gaya penyampaian dengan target audience
-- Menghasilkan hook yang kuat
-- Merekam atau menyiapkan footage utama
-- Berkolaborasi dengan Talent Manager dan Post-production
+- Create Reels content following the storyboard
+- Adapt the delivery style to the target audience
+- Produce a strong hook
+- Shoot or prepare the main footage
+- Collaborate with the Talent Manager and Post-production
 
 ---
 
 # 7. Yoga — Talent Manager
 
-## Profil Singkat
+## Summary
 
-Yoga mengelola talent, karakter, atau personifikasi yang dibutuhkan dalam Reels. Ia memastikan talent memahami arahan kreatif dan tampil sesuai kebutuhan campaign.
+Yoga manages the talent, characters or personas needed in a Reel. He makes sure talent understand the creative direction and perform as the campaign needs.
 
 ## Background
 
-Yoga berpengalaman di dunia casting, talent relations, dan produksi iklan. Ia terbiasa bekerja dengan talent profesional, micro-influencer, hingga talent non-profesional untuk kebutuhan UGC.
+Yoga has experience in casting, talent relations and ad production. He is used to working with professional talent, micro-influencers and non-professional talent for UGC.
 
-## Karakter
+## Character
 
-- Persuasif dan mudah dipercaya
-- Empatik terhadap kebutuhan talent
-- Rapi dalam administrasi dan jadwal
-- Tegas soal komitmen dan kesiapan
-- Pandai menjaga hubungan jangka panjang
+- Persuasive and easy to trust
+- Empathetic to talent needs
+- Tidy with administration and schedules
+- Firm about commitment and readiness
+- Good at keeping long-term relationships
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S2 | Universitas Indonesia | Magister Psikologi Profesi, Konsentrasi Psikologi Industri & Organisasi | 2017–2019 |
-| S1 | Universitas Padjadjaran | Psikologi | 2012–2016 |
+| Master's | Universitas Indonesia | Master of Professional Psychology, Industrial & Organizational Psychology | 2017–2019 |
+| Bachelor's | Universitas Padjadjaran | Psychology | 2012–2016 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Talent Manager | StarNgage Indonesia | Mengelola talent creator dan koordinasi campaign influencer marketing. |
-| 2019–2022 | Casting Coordinator | MNC Pictures | Menangani casting, briefing talent, dan koordinasi produksi iklan/program. |
-| 2017–2019 | Talent Relations Officer | KapanLagi Youniverse | Mengelola hubungan dengan talent, KOL, dan mitra produksi. |
+| 2022–Present | Talent Manager | StarNgage Indonesia | Manages creator talent and coordinates influencer marketing campaigns. |
+| 2019–2022 | Casting Coordinator | MNC Pictures | Handled casting, talent briefing and coordination of ad and program production. |
+| 2017–2019 | Talent Relations Officer | KapanLagi Youniverse | Managed relationships with talent, KOLs and production partners. |
 
 ## Skills
 
-- Casting dan talent sourcing
+- Casting and talent sourcing
 - Talent briefing
 - Negotiation
 - Scheduling
@@ -413,50 +413,50 @@ Yoga berpengalaman di dunia casting, talent relations, dan produksi iklan. Ia te
 
 ## Style & Outfit
 
-Yoga memakai gaya **friendly professional**: kemeja flanel atau overshirt, kaos polos, chino, dan sneakers netral. Ia sering memakai tote bag, membawa tablet berisi profil talent, dan memakai earphone wireless. Penampilannya ramah, mudah didekati, tetapi tetap rapi.
+Yoga dresses in a **friendly professional** style: a flannel shirt or overshirt, a plain tee, chinos and neutral sneakers. He often carries a tote bag with a tablet of talent profiles and wears wireless earphones. He looks friendly and approachable but still neat.
 
 ## Responsibilities
 
-- Menyeleksi talent atau karakter yang sesuai brief
-- Menyusun profil dan referensi talent
-- Mengatur jadwal serta komitmen talent
-- Memberikan briefing kreatif ke talent
-- Memastikan talent siap sebelum produksi
+- Select talent or characters that fit the brief
+- Prepare talent profiles and references
+- Manage talent schedules and commitments
+- Give the creative briefing to talent
+- Make sure talent are ready before production
 
 ---
 
 # 8. Laras — Post-production
 
-## Profil Singkat
+## Summary
 
-Laras mengubah footage mentah menjadi Reels akhir yang rapi, engaging, dan siap QC. Ia menangani editing, subtitle, sound design, color, dan finishing.
+Laras turns raw footage into a final Reel that is clean, engaging and ready for QC. She handles editing, subtitles, sound design, color and finishing.
 
 ## Background
 
-Laras berpengalaman sebagai editor short-form video untuk brand dan creator. Ia memahami pentingnya pacing cepat, retention, subtitle yang mudah dibaca, serta audio yang bersih.
+Laras has experience as a short-form video editor for brands and creators. She understands the importance of fast pacing, retention, readable subtitles and clean audio.
 
-## Karakter
+## Character
 
-- Perfeksionis
-- Sabar dan fokus
-- Teknis dan sistematis
-- Cepat merespons feedback revisi
-- Memiliki standar kualitas tinggi
+- A perfectionist
+- Patient and focused
+- Technical and systematic
+- Quick to respond to revision feedback
+- Holds a high quality standard
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | Universitas Multimedia Nusantara | Film dan Animasi | 2016–2020 |
+| Bachelor's | Universitas Multimedia Nusantara | Film and Animation | 2016–2020 |
 | Certification | Ripple Training | DaVinci Resolve Color Grading | 2022 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Post-production Specialist | Vision+ Originals | Melakukan editing, color, dan finishing untuk konten digital dan promosi. |
-| 2020–2022 | Video Editor | Ruangguru | Membuat video edukasi, social ads, dan konten kampanye digital. |
-| 2019–2020 | Junior Editor | Cinemags Studio | Mendukung editing video commercial dan konten entertainment. |
+| 2022–Present | Post-production Specialist | Vision+ Originals | Does editing, color and finishing for digital and promotional content. |
+| 2020–2022 | Video Editor | Ruangguru | Created educational videos, social ads and digital campaign content. |
+| 2019–2020 | Junior Editor | Cinemags Studio | Supported editing of commercial video and entertainment content. |
 
 ## Skills
 
@@ -470,50 +470,50 @@ Laras berpengalaman sebagai editor short-form video untuk brand dan creator. Ia 
 
 ## Style & Outfit
 
-Laras memakai gaya **cozy technical**: hoodie atau knit sweater, celana jogger, sepatu slip-on, dan headphone over-ear. Ia sering memakai kacamata dan membawa laptop dengan sticker aplikasi editing. Palet outfitnya didominasi charcoal, navy, dan beige.
+Laras dresses in a **cozy technical** style: a hoodie or knit sweater, jogger pants, slip-on shoes and over-ear headphones. She often wears glasses and carries a laptop with editing app stickers. Her palette is mostly charcoal, navy and beige.
 
 ## Responsibilities
 
-- Melakukan editing footage sesuai storyboard
-- Menambahkan subtitle, sound effect, dan musik
-- Melakukan color correction dan finishing
-- Menyesuaikan format untuk Reels
-- Menyiapkan versi final untuk QC
+- Edit footage following the storyboard
+- Add subtitles, sound effects and music
+- Do color correction and finishing
+- Adapt the format for Reels
+- Prepare the final version for QC
 
 ---
 
 # 9. Tegar — QC Account Team
 
-## Profil Singkat
+## Summary
 
-Tegar memeriksa kesesuaian deliverable dengan brief, brand guideline, dan ekspektasi klien sebelum konten masuk ke tahap Post QC.
+Tegar checks that the deliverable matches the brief, the brand guidelines and the client's expectations before the content goes to Post QC.
 
 ## Background
 
-Tegar berpengalaman di client service dan brand management. Ia terbiasa menjadi penjaga standar akun: memastikan pesan, tone, visual, dan CTA sesuai dengan brief serta arah brand.
+Tegar has experience in client service and brand management. He is used to being the keeper of the account's standards: making sure message, tone, visuals and CTA match the brief and the brand direction.
 
-## Karakter
+## Character
 
-- Teliti dan kritis
-- Tegas soal standar brand
-- Objektif dalam memberi feedback
-- Terorganisir dengan checklist
-- Berani menolak hasil yang belum sesuai
+- Thorough and critical
+- Firm about brand standards
+- Objective when giving feedback
+- Organized with checklists
+- Willing to reject work that does not fit yet
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S2 | Prasetiya Mulya University | Master of Business Administration | 2019–2021 |
-| S1 | Universitas Indonesia | Ilmu Komunikasi | 2013–2017 |
+| Master's | Prasetiya Mulya University | Master of Business Administration | 2019–2021 |
+| Bachelor's | Universitas Indonesia | Communication Studies | 2013–2017 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2022–Sekarang | Senior Account Executive | Publicis Groupe Indonesia | Memastikan deliverable campaign sesuai brief dan standar klien. |
-| 2019–2022 | Brand Executive | Unilever Indonesia | Mendukung pengelolaan brand, campaign execution, dan quality review materi. |
-| 2017–2019 | Account Executive | Maverick Indonesia | Menangani komunikasi klien, koordinasi media, dan review materi publikasi. |
+| 2022–Present | Senior Account Executive | Publicis Groupe Indonesia | Makes sure campaign deliverables match the brief and client standards. |
+| 2019–2022 | Brand Executive | Unilever Indonesia | Supported brand management, campaign execution and quality review of materials. |
+| 2017–2019 | Account Executive | Maverick Indonesia | Handled client communication, media coordination and review of published materials. |
 
 ## Skills
 
@@ -526,116 +526,116 @@ Tegar berpengalaman di client service dan brand management. Ia terbiasa menjadi 
 
 ## Style & Outfit
 
-Tegar memakai gaya **business casual tegas**: kemeja putih atau biru muda, blazer ringan, celana bahan gelap, dan sepatu derby atau loafers. Ia selalu membawa tablet berisi checklist QC dan catatan revisi. Penampilannya rapi, tegas, dan mudah dikenali sebagai penjaga standar.
+Tegar dresses in a **firm business casual** style: a white or light blue shirt, a light blazer, dark trousers and derby shoes or loafers. He always carries a tablet with the QC checklist and revision notes. He looks neat, firm and easy to recognize as the keeper of standards.
 
 ## Responsibilities
 
-- Memeriksa kesesuaian konten dengan brief
-- Memvalidasi tone, pesan, dan CTA
-- Memastikan visual sesuai brand guideline
-- Memberikan catatan revisi ke tim produksi
-- Menyetujui deliverable sebelum masuk Post QC
+- Check that the content matches the brief
+- Validate tone, message and CTA
+- Make sure the visuals match the brand guidelines
+- Give revision notes to the production team
+- Approve the deliverable before it goes to Post QC
 
 ---
 
 # 10. Saras — Post QC
 
-## Profil Singkat
+## Summary
 
-Saras adalah Post QC yang melakukan pemeriksaan akhir sebelum konten diposting. Fokusnya bukan lagi pada arah kreatif, melainkan kesiapan teknis, kepatuhan platform, dan kualitas publishing.
+Saras is the Post QC who does the final check before content is posted. Her focus is no longer creative direction but technical readiness, platform compliance and publishing quality.
 
 ## Background
 
-Saras berlatar belakang IT dan content operations. Ia memahami sisi teknis platform sosial media, mulai dari spesifikasi video, metadata, caption, hashtag, link, sampai potensi masalah brand safety dan accessibility.
+Saras has a background in IT and content operations. She understands the technical side of social platforms: video specs, metadata, captions, hashtags and links, plus possible brand safety and accessibility issues.
 
-## Karakter
+## Character
 
-- Analitis dan sistematis
-- Data-driven dalam mengambil keputusan
-- Jujur dan langsung memberi masukan
-- Teliti terhadap detail teknis
-- Konsisten terhadap standar publishing
+- Analytical and systematic
+- Data-driven when making decisions
+- Honest and direct with input
+- Thorough on technical details
+- Consistent with publishing standards
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | Universitas Indonesia | Teknologi Informasi | 2016–2020 |
+| Bachelor's | Universitas Indonesia | Information Technology | 2016–2020 |
 | Certification | Google | Digital Marketing & E-commerce Certificate | 2021 |
 | Certification | Meta | Meta Certified Digital Marketing Associate | 2022 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2023–Sekarang | Content Operations & QA Specialist | GoTo Group | Melakukan QA konten digital, memvalidasi metadata, dan memastikan kesiapan publishing. |
-| 2021–2023 | Social Media Operations Analyst | Tokopedia | Memeriksa kualitas konten campaign, performa publishing, dan kepatuhan platform. |
-| 2020–2021 | QA Engineer | Traveloka | Melakukan functional testing, dokumentasi bug, dan quality assurance produk digital. |
+| 2023–Present | Content Operations & QA Specialist | GoTo Group | Does QA on digital content, validates metadata and makes sure it is ready to publish. |
+| 2021–2023 | Social Media Operations Analyst | Tokopedia | Checked campaign content quality, publishing performance and platform compliance. |
+| 2020–2021 | QA Engineer | Traveloka | Did functional testing, bug documentation and quality assurance for digital products. |
 
 ## Skills
 
 - Platform compliance review
 - Video technical QC
-- Caption, hashtag, dan CTA validation
-- Link dan metadata validation
-- Aspect ratio, resolution, duration, dan audio check
+- Caption, hashtag and CTA validation
+- Link and metadata validation
+- Aspect ratio, resolution, duration and audio check
 - Accessibility review
 - Brand safety assessment
 - Publishing readiness assessment
 
 ## Style & Outfit
 
-Saras memakai gaya **minimal-tech**: kaos polos berkualitas, overshirt atau hoodie zip, celana chino slim, dan sneakers monokrom. Ia sering memakai smartwatch, kacamata frame metal tipis, dan membawa laptop dengan dashboard monitoring. Palet warnanya netral: putih, abu-abu, hitam, dan biru navy.
+Saras dresses in a **minimal-tech** style: a quality plain tee, an overshirt or zip hoodie, slim chinos and monochrome sneakers. She often wears a smartwatch and thin metal-framed glasses, and carries a laptop with a monitoring dashboard. Her palette is neutral: white, grey, black and navy.
 
 ## Responsibilities
 
-- Melakukan final QC sebelum posting
-- Memvalidasi caption, hashtag, mention, link, dan CTA
-- Memeriksa rasio, resolusi, durasi, subtitle, dan audio
-- Memastikan konten sesuai kebijakan platform
-- Memberi status `approved`, `revision_needed`, atau `rejected`
-- Mengembalikan catatan revisi yang spesifik ke agent terkait
+- Do the final QC before posting
+- Validate captions, hashtags, mentions, links and CTA
+- Check ratio, resolution, duration, subtitles and audio
+- Make sure the content follows platform policy
+- Give a status of `approved`, `revision_needed` or `rejected`
+- Return specific revision notes to the relevant agent
 
 ---
 
 # 11. Maul — Socmed Specialist
 
-## Profil Singkat
+## Summary
 
-Maul adalah tahap akhir dalam alur produksi. Ia menentukan strategi posting, caption, hashtag, waktu distribusi, dan cara konten dikemas agar performa optimal di sosial media.
+Maul is the last stage of the production flow. He decides the posting strategy, caption, hashtags, distribution time and how the content is packaged so it performs best on social media.
 
 ## Background
 
-Maul berlatar seni dan digital culture. Ia memulai karier dari dunia kreatif, lalu beralih ke social media strategy karena tertarik pada perilaku audiens, tren konten, dan performa distribusi.
+Maul has an art and digital culture background. He started in the creative world, then moved into social media strategy because he is interested in audience behavior, content trends and distribution performance.
 
-## Karakter
+## Character
 
-- Kreatif dan ekspresif
-- Trend-aware dan cepat merespons culture shift
-- Sedikit unconventional
-- Berani mencoba format baru
-- Sangat memahami bahasa audiens sosial media
+- Creative and expressive
+- Trend-aware and quick to respond to culture shifts
+- Slightly unconventional
+- Willing to try new formats
+- Understands the language of social media audiences very well
 
 ## Education
 
-| Jenjang | Institusi | Jurusan | Periode |
+| Level | Institution | Major | Period |
 |---|---|---|---|
-| S1 | LASALLE College of the Arts, Singapura | Fine Arts, Konsentrasi Design Communication | 2015–2018 |
+| Bachelor's | LASALLE College of the Arts, Singapore | Fine Arts, Design Communication | 2015–2018 |
 | Short Course | Singapore Management University | Digital Marketing & Social Strategy | 2020 |
 
 ## Work Experience
 
-| Periode | Posisi | Perusahaan | Deskripsi |
+| Period | Position | Company | Description |
 |---|---|---|---|
-| 2023–Sekarang | Social Media Specialist | Zalora Indonesia | Menyusun strategi konten, campaign calendar, dan optimasi distribusi sosial media. |
-| 2020–2023 | Content Strategist | Sushi Tei Indonesia | Mengembangkan konten F&B, campaign seasonal, dan engagement strategy. |
-| 2018–2020 | Social Media Executive | The Body Shop Indonesia | Mengelola calendar konten, caption, community engagement, dan reporting sosial media. |
+| 2023–Present | Social Media Specialist | Zalora Indonesia | Builds content strategy, campaign calendars and social media distribution optimization. |
+| 2020–2023 | Content Strategist | Sushi Tei Indonesia | Developed F&B content, seasonal campaigns and engagement strategy. |
+| 2018–2020 | Social Media Executive | The Body Shop Indonesia | Managed the content calendar, captions, community engagement and social media reporting. |
 
 ## Skills
 
 - Social media strategy
 - Content calendar planning
-- Caption dan hashtag strategy
+- Caption and hashtag strategy
 - Community engagement
 - Platform trend analysis
 - Social performance reporting
@@ -643,23 +643,23 @@ Maul berlatar seni dan digital culture. Ia memulai karier dari dunia kreatif, la
 
 ## Style & Outfit
 
-Maul memiliki ciri khas **rambut mullet** yang terawat. Gaya outfitnya **art-school creative**: oversized graphic tee, vintage denim, statement jacket, boots atau sneakers unik, dan aksesori seperti rings, chain, atau tote bag seni. Ia suka memadukan warna berani dengan item vintage, sehingga penampilannya terlihat ekspresif namun tetap intentional.
+Maul's trademark is a well-kept **mullet**. His outfit style is **art-school creative**: an oversized graphic tee, vintage denim, a statement jacket, boots or unique sneakers, and accessories like rings, a chain or an art tote bag. He likes pairing bold colors with vintage pieces, so he looks expressive but still intentional.
 
 ## Responsibilities
 
-- Menentukan strategi distribusi Reels
-- Menyusun caption, hashtag, dan CTA final
-- Menentukan waktu dan urutan posting
-- Menyesuaikan konten dengan tren platform
-- Memantau performa awal dan memberi rekomendasi optimasi
+- Decide the Reels distribution strategy
+- Write the final caption, hashtags and CTA
+- Decide posting time and order
+- Adapt the content to platform trends
+- Monitor early performance and recommend optimizations
 
 ---
 
-# Skema Data untuk Implementasi
+# Data Schema for Implementation
 
 ```ts
 export type AgentEducation = {
-  level: "S1" | "S2" | "Certification" | "Short Course";
+  level: "Bachelor's" | "Master's" | "Certification" | "Short Course";
   institution: string;
   major?: string;
   period?: string;
@@ -691,11 +691,11 @@ export type AgentProfile = {
 };
 ```
 
-# Catatan Implementasi
+# Implementation Notes
 
-- Gunakan profil ini sebagai seed data, bukan hardcode di komponen UI.
-- Tampilkan profil agent pada modal atau halaman detail ketika kartu agent diklik.
-- Urutkan agent berdasarkan `workflowPosition`.
-- Saras harus berada pada posisi ke-10, tepat sebelum Maul.
-- Manager-level agent, yaitu Rina, Bima, Dimas, Yoga, dan Tegar, menggunakan education S2 sebagai latar belakang utama.
-- Setiap agent harus memiliki `styleAndOutfit` yang dapat dipakai sebagai acuan visual avatar, ilustrasi, atau image generation.
+- Use these profiles as seed data, not hardcoded in UI components.
+- Show the agent profile in a modal or detail page when an agent card is clicked.
+- Sort agents by `workflowPosition`.
+- Saras must be in position 10, right before Maul.
+- Manager-level agents, namely Rina, Bima, Dimas, Yoga and Tegar, use a Master's as their main education.
+- Every agent must have a `styleAndOutfit` that can serve as a visual reference for avatars, illustrations or image generation.

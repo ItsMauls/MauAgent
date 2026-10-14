@@ -29,6 +29,12 @@ import { RoleAvatar } from "./cards";
 import { taskHref } from "@/lib/boards/flows";
 
 export const product = (b: unknown) => (b as { product?: string } | null)?.product;
+/** A readable name for an artifact: its campaign product, else what the direct task was asked (product, topic or goal). */
+export const artifactTitle = (a: { agentRole: string; campaign: { clientBrief: unknown } | null }, input?: unknown) => {
+  const i = (input ?? {}) as Record<string, unknown>;
+  const t = [product(a.campaign?.clientBrief), i.product, i.topic, i.objective].find((x): x is string => typeof x === "string" && !!x.trim());
+  return t ? (t.length > 60 ? `${t.slice(0, 57)}…` : t) : `${roleByAgent(a.agentRole)?.label ?? a.agentRole} output`;
+};
 export const when = (d: Date) => d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export const TASK_PILL: Record<string, string> = {
@@ -393,6 +399,8 @@ export async function ArtifactsPanel({ role, q, a, b }: { role: BoardRole; q?: s
     orderBy: { createdAt: "desc" }, take: 30,
     select: { id: true, agentRole: true, version: true, createdAt: true, costUsd: true, payload: true, campaignId: true, agentTaskId: true, campaign: { select: { clientBrief: true } } },
   });
+  const inputs = new Map((await db.agentTask.findMany({ where: { id: { in: rows.flatMap((r) => r.agentTaskId ?? []) } }, select: { id: true, input: true } })).map((t) => [t.id, t.input]));
+  const titleOf = (x: (typeof rows)[number]) => artifactTitle(x, x.agentTaskId ? inputs.get(x.agentTaskId) : undefined);
   const [left, right] = [rows.find((r) => r.id === a), rows.find((r) => r.id === b)];
   const who = role.agentRole === "socmedSpecialist" ? await socialWho() : null;
   const base = `/boards/roles?role=${role.slug}&tab=artifacts${q ? `&q=${encodeURIComponent(q)}` : ""}`;
@@ -413,7 +421,7 @@ export async function ArtifactsPanel({ role, q, a, b }: { role: BoardRole; q?: s
           <div className="grid gap-4 md:grid-cols-2">
             {[left, right].map((x) => (
               <div key={x.id} className="min-w-0">
-                <p className="mb-2 text-xs font-semibold text-ink-2">{artifactLabel(x)}</p>
+                <p className="mb-2 text-xs font-semibold text-ink-2">{titleOf(x)} · v{x.version} · {when(x.createdAt)}</p>
                 <OutputView payload={x.payload} who={who} />
               </div>
             ))}
@@ -427,7 +435,7 @@ export async function ArtifactsPanel({ role, q, a, b }: { role: BoardRole; q?: s
           return (
             <li key={x.id} className="min-w-0">
               <Modal
-                title={`${product(x.campaign?.clientBrief) ?? "Direct task"} · v${x.version}`}
+                title={`${titleOf(x)} · v${x.version}`}
                 label="Open output"
                 className="flex h-full w-full flex-col gap-2 rounded-2xl border border-line bg-white p-4 text-left shadow-sm transition hover:border-brand hover:bg-brand-soft"
                 trigger={
@@ -436,13 +444,14 @@ export async function ArtifactsPanel({ role, q, a, b }: { role: BoardRole; q?: s
                       <span className="pill border-violet-200 bg-agent-soft !px-2.5 !py-0.5 text-violet-700">v{x.version}</span>
                       <span className="text-xs text-ink-3">{when(x.createdAt)}</span>
                     </span>
-                    <span className="line-clamp-1 font-semibold">{product(x.campaign?.clientBrief) ?? "Direct task"}</span>
+                    <span className="line-clamp-2 font-semibold">{titleOf(x)}</span>
+                    <span className="text-xs font-semibold text-ink-3">{x.campaignId ? "Campaign" : "Direct task"}</span>
                     <span className="line-clamp-3 flex-1 text-sm text-ink-2">{text ?? "No text preview."}</span>
                     <span className="text-xs text-ink-3">US${Number(x.costUsd).toFixed(4)}</span>
                   </>
                 }
               >
-                <p className="text-sm text-ink-2">{artifactLabel(x)} · US${Number(x.costUsd).toFixed(4)}</p>
+                <p className="text-sm text-ink-2">{x.campaignId ? "Campaign" : "Direct task"} · {when(x.createdAt)} · US${Number(x.costUsd).toFixed(4)}</p>
                 <div className="flex flex-wrap gap-3 text-sm font-semibold">
                   {x.campaignId && <Link href={`/campaigns/${x.campaignId}?tab=artifacts`} className="text-brand">Open campaign</Link>}
                   {x.agentTaskId && !x.campaignId && <Link href={taskHref(x.agentRole, x.agentTaskId)} className="text-brand">Open task</Link>}

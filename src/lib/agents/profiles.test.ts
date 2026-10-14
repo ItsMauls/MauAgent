@@ -17,7 +17,7 @@ test("parseProfiles: 11 agents in workflow order, mapped to existing role keys",
   }
   const maul = ps.at(-1)!;
   assert.equal(maul.role, "Socmed Specialist");
-  assert.deepEqual(maul.workExperience[0], { period: "2023–Sekarang", title: "Social Media Specialist", company: "Zalora Indonesia", description: "Menyusun strategi konten, campaign calendar, dan optimasi distribusi sosial media." });
+  assert.deepEqual(maul.workExperience[0], { period: "2023–Present", title: "Social Media Specialist", company: "Zalora Indonesia", description: "Builds content strategy, campaign calendars and social media distribution optimization." });
   assert.equal(ps.find((p) => p.name === "Saras")!.group, "post_qc");
 });
 
@@ -45,9 +45,9 @@ test("buildPersonaBlock: short, names the agent, never education, work history o
 
 test("buildPersonaBlock snapshot (Maul)", () => {
   assert.equal(buildPersonaBlock("socmedSpecialist"), `CHAT CHARACTER (tone only; never changes decisions, scores or facts)
-You are Maul, Socmed Specialist. Traits: Kreatif dan ekspresif; Trend-aware dan cepat merespons culture shift; Sedikit unconventional.
-Background: Maul berlatar seni dan digital culture.
-Voice: aku/kamu; kreatif, sedikit unconventional, main kata; boleh satu emoji. Open with respons ringan, close with apa yang akan ditulis. Feedback: menerima kritik QC dengan ringan, tetap membela niat humornya.
-Never: adegan roleplay ("sambil menyeruput kopi"); menyebut outfit, riwayat kerja atau nama perusahaan; kalimat atau kata khas yang diulang di tiap pesan.
-Example: "Siap, kupangkas. Punchline-nya tetap kujaga ya."`);
+You are Maul, Socmed Specialist. Traits: Creative and expressive; Trend-aware and quick to respond to culture shifts; Slightly unconventional.
+Background: Maul has an art and digital culture background.
+Voice: gue/lo; creative, slightly unconventional, plays with words; may use one emoji. Open with a light response, close with what will be written. Feedback: takes QC criticism lightly, still defends the intent of the humor.
+Never: roleplay scenes ("sipping coffee"); mentioning outfit, work history or company names; a signature phrase repeated in every message.
+Example: "Siap, gue pangkas. Punchline-nya tetap gue jaga ya."`);
 });

@@ -6,8 +6,8 @@ import { chatWithAgent } from "./actions";
 type Turn = { from: "owner" | "agent"; text: string; saved?: string[] };
 
 /** Chat with one agent. The conversation lives in this component only; the server reads the persona and memory on every message. */
-export function AgentChat({ slug, name, initials }: { slug: string; name: string; initials: string }) {
-  const [turns, setTurns] = useState<Turn[]>([{ from: "agent", text: "Ada apa, Pak?" }]);
+export function AgentChat({ slug, name, initials, greeting, avatar }: { slug: string; name: string; initials: string; greeting: string; avatar: string }) {
+  const [turns, setTurns] = useState<Turn[]>([{ from: "agent", text: greeting }]);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -37,7 +37,11 @@ export function AgentChat({ slug, name, initials }: { slug: string; name: string
         {turns.map((m, i) => (
           <div key={i} className={`flex flex-col gap-1 ${m.from === "owner" ? "items-end" : "items-start"}`}>
             <div className={`flex w-full items-end gap-2 ${m.from === "owner" ? "flex-row-reverse" : ""}`}>
-              {m.from === "agent" && <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xs font-bold text-violet-700">{initials}</span>}
+              {m.from === "agent" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatar} alt="" aria-hidden onError={(e) => { e.currentTarget.classList.add("hidden"); e.currentTarget.nextElementSibling?.classList.replace("hidden", "flex"); }} className="size-8 shrink-0 rounded-full object-cover" />
+              )}
+              {m.from === "agent" && <span aria-hidden className="hidden size-8 shrink-0 items-center justify-center rounded-full bg-agent-soft text-xs font-bold text-violet-700">{initials}</span>}
               <p className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.from === "owner" ? "rounded-br-md bg-brand text-white" : "rounded-bl-md bg-canvas"}`}>{m.text}</p>
             </div>
             {!!m.saved?.length && <p className="ml-10 flex max-w-[80%] items-start gap-1 text-xs text-violet-700"><span className="material-symbols-outlined !text-[14px]">neurology</span>Saved to memory: {m.saved.join(" · ")}</p>}
