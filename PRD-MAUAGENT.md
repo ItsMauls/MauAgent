@@ -1,323 +1,297 @@
-# PRD: MauAgent — Automation Creative Agency Berbasis AI Multi-Agen
+# PRD: MauAgent — AI Multi-Agent Creative Agency Automation
 
-Versi: 1.0 · Tanggal: 11 Oktober 2026 · Pemilik: Maulana Ibrahim
-Dokumen pendamping: "MauAgent: Rancangan Sistem Agensi Kreatif AI" (rancangan arsitektur dan riset).
+Version: 2.0 · Date: 14 October 2026 · Owner: Maulana Ibrahim
+Supersedes v1.0 (11 Oct 2026). v2.0 describes the product **as built**; where it differs from v1.0, the reason is in `DECISIONS.md`.
 
-> Catatan untuk Claude Code atau coding agent lain: baca seluruh dokumen ini sebelum menulis kode. Kerjakan sesuai urutan di bagian "Rencana build" dan jangan melompat ke fase berikutnya sebelum acceptance criteria fase sekarang lolos. Bila ada keputusan yang tidak tercakup di sini, pilih opsi paling sederhana, catat di `DECISIONS.md`, dan lanjutkan.
+> Note for Claude Code or any coding agent: read this document before writing code. When a decision is not covered here, pick the simplest option, record it in `DECISIONS.md` and continue. `DECISIONS.md` has the detail behind every line below.
 
 ---
 
-## 1. Ringkasan
+## 1. Summary
 
-MauAgent adalah aplikasi yang meniru alur kerja creative agency sungguhan. Satu peran agensi = satu agen AI, dan agen-agen berjalan **berurutan**. Pengguna (pemilik agensi) berperan sebagai Client: memberi brief, lalu menyetujui, merevisi, atau meminta regenerasi hasil. Setelah disetujui, konten dipublikasikan otomatis ke Instagram dan TikTok, dan dasbor terpisah memantau tren, performa, status pipeline, dan biaya.
+MauAgent mimics how a real creative agency works. One agency role = one AI agent, and the agents run in sequence. The user (the agency owner) acts as the Client: gives a brief, then approves, revises or regenerates the result. After approval, content is published through Buffer to the connected social channels, and separate pages track trends, performance, pipeline status and cost.
 
-Alur peran:
+MauAgent produces two kinds of content:
+
+1. **Video campaigns** (9:16 short video for Instagram and TikTok) through the full agent pipeline.
+2. **Text posts** (single posts and threads for X and Threads) generated in batches by the Socmed Specialist, approved one by one, then scheduled in Buffer.
+
+Video pipeline:
 
 ```
-Client (pengguna) → Account Manager → Creative Director → Art Director
-→ Producer → Execution Team (Videographer → Post-production)
-→ Account Team (QC) → Client Approval → [Revisi / Regenerate] → Final Deliverable → Publish → Dasbor
+Client (user) → Account Manager → Creative Director → Art Director
+→ Producer (deterministic) → Content Creator (Seedance / manual upload) → Post-production (FFmpeg)
+→ QC (Account Team) → Client Approval → [Revise / Regenerate] → Publish via Buffer → Metrics
 ```
 
-### 1.1 Tujuan
+### 1.1 Goals
 
-1. Dari satu brief, hasilkan konten video pendek 9:16 siap tayang dengan intervensi manusia minimal, tetapi dengan titik approval yang jelas.
-2. Setiap agen menghasilkan artefak terstruktur yang sesuai perannya, dan agen berikutnya hanya bergantung pada artefak itu.
-3. Biaya terkendali: setiap pengeluaran tercatat, estimasi tampil sebelum regenerasi, dan ada batas budget.
-4. Dua sumber video yang bisa dicampur per shot: Veo API (otomatis) dan Manual Upload (video dibuat manual di aplikasi Gemini lalu diunggah).
-5. Publikasi otomatis ke Instagram dan TikTok setelah approve.
-6. Dasbor untuk pipeline, approval, biaya, tren, dan analitik.
+1. From one brief, produce a ready-to-post 9:16 short video with minimal human work, with clear approval points.
+2. Every agent produces a structured artifact for its role; the next agent depends only on that artifact (plus curated memory and the creative kit).
+3. Controlled cost: every spend is a `CostEntry`, estimates show before any regenerate, and budget caps are enforced in code.
+4. Two video sources, mixable per shot: Seedance API (automatic) and Manual Upload (permanent mode; a failed Seedance shot opens an upload slot).
+5. Text posts that sound like the owner: type mix, owner's writing voice, layered quality gate, per-post approval.
+6. Publishing through one provider (Buffer) for Instagram, TikTok, X and Threads.
+7. Pages to run the agency: Boards, Trends, Briefs, Campaigns, Analytics, Connections, Settings.
 
-### 1.2 Bukan tujuan (v1)
+### 1.2 Non-goals (v1)
 
-- Multi-tenant untuk banyak klien eksternal (satu pengguna dulu, tetapi skema data menyertakan `brandKitId` agar mudah diperluas).
-- Editor video visual penuh di browser.
-- Platform selain Instagram dan TikTok (YouTube Shorts dll. ditunda).
-- Aplikasi mobile native.
-- Scraping platform yang melanggar ketentuan layanan.
+- Multi-tenant use for external clients (single user; `brandKitId` keeps the schema ready).
+- A full visual video editor in the browser.
+- Direct publishers for Instagram Graph or TikTok Content Posting (OAuth connect exists, publishing goes through Buffer).
+- Platforms beyond Instagram, TikTok, X and Threads (YouTube Shorts and others later).
+- Native mobile app.
+- Scraping that breaks a platform's terms of service.
 
 ### 1.3 Persona
 
-- **Owner/Client:** pemilik agensi, engineer full-stack berbahasa Indonesia. Memberi brief, memeriksa hasil, memutuskan approve/revisi/regenerate, dan memantau biaya.
+- **Owner/Client:** agency owner, full-stack engineer. Gives briefs, reviews, decides approve/revise/regenerate, watches cost. **The UI and all output are in English** (owner ruling, overrides v1.0's Indonesian default). Text posts follow the language of the topic or audience.
 
 ---
 
-## 2. Keputusan teknis (sudah ditetapkan)
+## 2. Technical decisions
 
-| Area | Keputusan |
+| Area | Decision |
 | --- | --- |
-| Bahasa/runtime | TypeScript, Node.js 20+ |
-| Web app dan dasbor | Next.js (App Router), Auth0 untuk login |
-| Database | PostgreSQL dengan Prisma |
-| Penyimpanan aset | S3 (presigned URL untuk upload dan akses) |
-| Orkestrasi alur | Inngest (durable workflow). Tiap agen = satu `step.run`. Jeda approval = `step.waitForEvent` dengan timeout 7 hari |
-| Lapisan agen | Vercel AI SDK atau Mastra, keluaran terstruktur divalidasi Zod |
-| Video | Google Veo 3.1 lewat Gemini API (Lite untuk draf, Fast untuk final) dan jalur Manual Upload. Tidak ada penyedia video lain |
-| Gambar keyframe dan QC video | Gemini (gambar dan multimodal) |
-| Suara, musik, transkrip | ElevenLabs (Scribe, Voice Isolator, Voice Changer, Eleven Music) |
-| Editing | FFmpeg (utama), Remotion (opsional untuk subtitle animasi) |
-| Tren | vidIQ MCP (`https://mcp.vidiq.com/mcp`) |
-| Publikasi | Instagram Graph API langsung; TikTok via Content Posting API (mode inbox/draft) atau Orshot Publish selama audit TikTok belum lolos |
-| Infra | AWS (ECS/Fargate atau Lambda), CI/CD GitHub Actions, Docker |
-| LLM per agen | Konfigurasi per agen lewat env/config, tanpa hardcode. Default: model kuat untuk Creative Director, model menengah untuk Account Manager dan Art Director, model murah untuk Producer |
+| Language/runtime | TypeScript, Node.js 20.19+ or 22 |
+| Web app | Next.js 15 (App Router), one app (no monorepo), Tailwind 4, Auth0 for login |
+| Database | PostgreSQL with Prisma 6 |
+| Asset storage | Cloudinary (images and video; permanent URLs). S3/MinIO is **legacy**: videos, files, presigned URLs and the health check still use it until the migration is finished |
+| Workflow orchestration | Inngest (default) and Trigger.dev (`WORKFLOW_ENGINE`) coexist until parity is proven. Each agent = one step; approval pauses = `waitForEvent` with a 7-day timeout |
+| Agent layer | Own `callLlm` + `generateStructured` over plain `fetch` (no AI SDK in the call path), structured output validated with Zod, one repair round |
+| LLM | OpenRouter (OpenAI-compatible), model per agent in `/settings/ai`, primary + fallback key, failover on 401/402/429/5xx |
+| Video | BytePlus ModelArk Seedance (draft and final model IDs in env) and Manual Upload; Magic Hour as an alternative provider in `/settings/ai` |
+| Images | Magic Hour, BytePlus Seedream, OpenRouter image models, in a configurable fallback order |
+| Editing | FFmpeg (`ffmpeg-static`, `ffprobe-static`), run inside the Next.js request (`maxDuration` 300) |
+| Trends | Apify TikTok Trends actor (cached, scheduled). X and Threads trend pages are placeholders |
+| Web research | Tavily (facts and news for text posts) |
+| Publishing | Buffer GraphQL API (personal API key) for Instagram, TikTok, X, Threads |
+| Social accounts | Buffer channels synced into `SocialAccount`; Instagram and TikTok OAuth connect (AES-256-GCM encrypted tokens) |
+| Infra | No deployment yet. Docker Compose for local Postgres and MinIO |
 
-Prinsip: model ID, harga, dan penyedia **tidak di-hardcode**. Semua lewat `config` dan tabel `PriceBook` karena cepat berubah. Verifikasi ID model Veo/Gemini terbaru dari dokumentasi resmi sebelum implementasi.
+Principle: model IDs, prices and providers are **not hardcoded**. They come from env, `/settings` and the `PriceBook` table because they change often.
 
----
-
-## 3. Alur dan state
-
-### 3.1 Status kampanye
-
-`DRAFTING → AWAITING_VIDEO_UPLOAD (hanya jalur manual) → POST_PRODUCTION → AWAITING_APPROVAL → APPROVED → PUBLISHING → PUBLISHED`
-
-Cabang: `AWAITING_APPROVAL → REVISING → AWAITING_APPROVAL`, `AWAITING_APPROVAL → REGENERATING → AWAITING_APPROVAL`, `AWAITING_APPROVAL → REJECTED`, `AWAITING_APPROVAL → EXPIRED` (timeout 7 hari). Status `FAILED` untuk kegagalan permanen setelah retry.
-
-### 3.2 Pseudocode orkestrator (Inngest)
-
-```ts
-export const campaignPipeline = inngest.createFunction(
-  { id: "campaign-pipeline" },
-  { event: "campaign/brief.submitted" },
-  async ({ event, step }) => {
-    const brief = event.data.clientBrief;
-    const internal = await step.run("account-manager", () => runAgent("accountManager", { brief }));
-    const creative = await step.run("creative-director", () => runAgent("creativeDirector", { internal }));
-    const visual = await step.run("art-director", () => runAgent("artDirector", { creative, brief }));
-    const plan = await step.run("producer", () => runAgent("producer", { visual, budgetCapUsd: brief.budgetCapUsd }));
-    // budget gate: bila plan.estCostUsd > cap, berhenti dan minta keputusan Anda lewat waitForEvent
-
-    await step.run("execution-videographer", () => produceShots(plan)); // veo_api: generate; manual_upload: buat Prompt Package
-    // jalur manual: tunggu event "shot/asset.uploaded" untuk semua shot manual
-    await step.waitForEvent("wait-uploads", { event: "campaign/assets.complete", match: "data.campaignId", timeout: "14d" });
-
-    const bundle = await step.run("post-production", () => runPostProduction(plan));
-    const pkg = await step.run("account-team-qc", () => runAgent("accountTeam", { bundle, brief }));
-
-    // loop approval
-    while (true) {
-      const decision = await step.waitForEvent("client-decision", {
-        event: "campaign/client.decision", match: "data.campaignId", timeout: "7d",
-      });
-      if (!decision) return markExpired();
-      if (decision.data.type === "approve") break;
-      if (decision.data.type === "reject") return markRejected();
-      await step.run("handle-revision", () => routeRevision(decision.data)); // revise | regenerate
-    }
-
-    await step.run("publish", () => publishAll(pkg));
-    await step.run("schedule-metrics", () => scheduleMetricPulls(pkg)); // T+1 jam, T+24 jam, T+7 hari
-  }
-);
-```
-
-Idempotensi: setiap `step.run` yang memanggil API berbiaya memakai idempotency key (`campaignId + step + attempt`) agar retry tidak memicu generate ganda.
+Not used: Veo/Gemini API (replaced by Seedance and OpenRouter), Remotion, Mastra, ECS/Fargate/Lambda, Orshot as a publisher (dropped 14 Oct 2026), ElevenLabs and vidIQ (planned, not built).
 
 ---
 
-## 4. Kebutuhan fungsional
+## 3. Third-party tools and what they are for
 
-Setiap agen: input = artefak sebelumnya, output = artefak JSON tervalidasi Zod, tersimpan di tabel `Artifact` dengan versi, `agentRole`, `costUsd`, dan `runId`. Agen **tidak** membaca riwayat percakapan, hanya artefak.
+Status: **Live** = in use and wired; **Optional** = used only when its key is set; **Legacy** = still used, being replaced; **Not built** = in the integrations list but no code yet.
 
-### F1. Client Brief (pengguna)
-- Form di dasbor: tujuan bisnis, produk/tempat usaha, target audiens, platform, budget cap (USD), deadline, brand kit, referensi (tautan atau upload).
-- Output: `ClientBrief { objective, audience, kpi, platforms[], budgetCapUsd, deadline, brandKitId, references[] }`.
+| Tool | What it is used for | Where in the product | Config | Status |
+| --- | --- | --- | --- | --- |
+| **Auth0** | Login. Middleware guards every route except `/auth/*` and the workflow endpoints | Whole app | `AUTH0_*` | Live |
+| **PostgreSQL + Prisma** | All state: campaigns, artifacts, runs, costs, accounts, publish jobs, memory, trends, settings | Whole app | `DATABASE_URL` | Live |
+| **OpenRouter** | Every LLM call: agents, revision router, voice analysis, text posts, judge, vision. Real cost per call comes from `usage.cost` | Pipeline, Boards tasks, Briefs | `AI_API_KEY`, `AI_API_KEY_FALLBACK`, `AI_BASE_URL`, `AI_MODEL`, `AI_VISION_MODEL`, `IMAGE_MODEL`; per-agent model, effort and caps in `/settings/ai` | Live |
+| **BytePlus ModelArk (Seedance)** | Video generation per shot: draft and final tier, 9:16 with audio. Task create then poll | Content Creator step | `ARK_API_KEY`, `ARK_BASE_URL`, `SEEDANCE_MODEL_*`, `SEEDANCE_RES_*` | Live (key set, not verifiable by a free call) |
+| **BytePlus Seedream** | Image generation for library characters (front/right/back/left views) | Library | `ARK_API_KEY`, `SEEDREAM_MODEL` | Optional |
+| **Magic Hour** | Image and video generation provider, in the fallback order set in `/settings/ai` | Library, video | `MAGIC_HOUR_API_KEY` | Optional |
+| **Cloudinary** | Storage and delivery of library reference images and generated images (REST, no SDK); target storage for video | Library, assets | `CLOUDINARY_*` | Live (videos not migrated yet) |
+| **S3 / MinIO** | Storage and presigned URLs for video clips, final cuts and context files; daily health check | Campaigns, uploads | `S3_*`, `AWS_*` | Legacy (to be replaced by Cloudinary) |
+| **Buffer** | The only publisher. Syncs channels, creates posts (schedule, queue, draft, share now), converts drafts to scheduled, polls status, reads post metrics. Needs the personal API key (the `insightsRead` scope) | Connections, Approval, Campaign publication, Schedule panel, Analytics | `BUFFER_API_KEY`, `BUFFER_ORGANIZATION_ID`, `BUFFER_API_URL`, `BUFFER_MAX_CONCURRENCY` | Live |
+| **Apify (TikTok Trends actor)** | Trending TikTok hashtags and top videos per country, cached daily; the Account Manager and the text brief read the top signals | Trends, Briefs | `APIFY_API_TOKEN`, `APIFY_TIKTOK_TRENDS_ACTOR_ID` | Live |
+| **Tavily** | Web search for text posts: facts (credible domains only) for educational posts and recent news for satire about a trend | Text brief generation | `TAVILY_API_KEY` | Optional |
+| **Inngest** | Durable workflows: campaign pipeline, direct tasks, publishing, Buffer sync and metrics, trend scout, token refresh, health checks | Background work | `INNGEST_*` | Live (default engine) |
+| **Trigger.dev** | Second orchestrator, being evaluated for parity. Queues per provider; build extension for FFmpeg | `src/trigger/` | `TRIGGER_*`, `WORKFLOW_ENGINE` | Evaluation |
+| **FFmpeg / ffprobe** | Validate uploaded clips (duration, resolution, 9:16, audio), join clips, burn subtitles, export the 1080×1920 final cut and thumbnail | Content Creator, Post-production | bundled via `ffmpeg-static` | Live |
+| **Instagram API (Instagram Login)** | Connect an Instagram Business/Creator account, long-lived token refresh, publishing quota read | Connections / Accounts | `IG_APP_ID`, `IG_APP_SECRET`, `IG_GRAPH_VERSION` | Optional (publishing goes through Buffer) |
+| **TikTok Login Kit** | Connect a TikTok account, token refresh | Connections / Accounts | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | Optional (publishing goes through Buffer) |
+| **ElevenLabs** | Planned: voice cleanup, music, transcription | Post-production | none | Not built |
+| **vidIQ** | Planned: extra trend signals | Trends | none | Not built |
+| **Threads / Notion** | Planned: direct Threads connection and Notion sync | Connections | none | Coming soon |
+
+Secrets live only in env. Social tokens are encrypted at rest with `TOKEN_ENC_KEY` and never reach the client.
+
+---
+
+## 4. Flow and state
+
+### 4.1 Campaign status
+
+`DRAFTING → AWAITING_BUDGET (budget gate) → AWAITING_VIDEO_UPLOAD (manual path) → POST_PRODUCTION → AWAITING_APPROVAL → APPROVED → PUBLISHING → PUBLISHED`
+
+Branches: `AWAITING_APPROVAL → REVISING | REGENERATING → AWAITING_APPROVAL`, `→ REJECTED`, `→ EXPIRED` (7-day timeout). `FAILED` for permanent failures after retry. The state machine is enforced in code (`src/lib/status.ts`) with atomic conditional updates.
+
+### 4.2 Orchestration
+
+- One run of the campaign pipeline per round. A revise or regenerate starts a **new run** of the same function with `from` (the stage to restart at); earlier stages reuse their latest artifact.
+- Idempotency: every costly call has an idempotency key; every LLM HTTP call is a `CostEntry` row whose stored output is reused on retry.
+- Approve creates `PublishJob` rows per target account and sends them to Buffer. A draft-only result is not `PUBLISHED`.
+
+---
+
+## 5. Functional requirements
+
+Each agent: input = previous artifacts, output = a Zod-validated JSON artifact stored in `Artifact` with version, `agentRole`, `costUsd` and `runId`. Agents do not read chat history. Allowed extra inputs: curated agent memory, the creative kit (Art Director) and the owner's writing voice (text posts).
+
+### F1. Briefs (`/brief`)
+- **Video brief:** objective, product, audience, platforms, budget cap, deadline, brand kit, references, video source (default from Settings, overridable), creative kit (characters, locations, styles). A helper suggests details from the goal.
+- **Text brief** (`?mode=text`): goals, audience, content types as cards, post count, length, call to action, media and link, hashtag policy, avoid list, trend bubbles, owner's writing voice, context files.
+- Output: `ClientBrief` for video; a Socmed Specialist task for text.
 
 ### F2. Account Manager
-- Memanggil vidIQ MCP untuk mengambil sinyal tren yang relevan dengan niche (outlier Reels/TikTok, trending, keyword).
-- Output: `InternalBrief { problemStatement, insight, mandatories[], tone, deliverables[{platform, format, durationSec}], trendRefs[] }`.
+Turns the brief and the top 5 cached trend signals into `InternalBrief { problemStatement, insight, mandatories[], tone, deliverables[], trendRefs[] }`.
 
 ### F3. Creative Director
-- Menghasilkan 3 opsi konsep lalu memilih satu dengan alasan.
-- Output: `CreativeBrief { bigIdea, conceptOptions[3]{title, logline, whyItWorks, hook}, chosenConcept, keyMessage, cta }`.
+Three concept options, one chosen with reasons: `CreativeBrief { bigIdea, conceptOptions[3], chosenConcept, keyMessage, cta }`.
 
 ### F4. Art Director
-- Menerjemahkan konsep menjadi arahan visual dan shot list; membuat keyframe gambar lewat Gemini bila perlu.
-- Output: `VisualDirection { moodboardPrompts[], palette, typography, shotList[{shotId, durationSec, cameraMove, subject, setting, lighting, onScreenText, voLine}], styleRefImageUrls[] }`.
+Visual direction and shot list; must build from the linked creative kit: `VisualDirection { moodboardPrompts[], palette, typography, shotList[], styleRefImageUrls[] }`. Also: Storyboard Artist turns the shot list into timed panels.
 
-### F5. Producer
-- Menentukan `source` per shot (`veo_api` atau `manual_upload`), resolusi, batas percobaan, dan menghitung estimasi biaya **dengan kode deterministik** (bukan LLM) dari `PriceBook`.
-- Budget gate: bila estimasi melebihi `budgetCapUsd`, alur berhenti dan menunggu keputusan pengguna.
-- Output: `ProductionPlan { shots[{shotId, source, resolution, maxAttempts, estCostUsd}], estCostUsd, timeline, approvalsNeeded }`.
+### F5. Producer (no LLM)
+Chooses the source per shot and computes the estimate **in code** from `PriceBook`. Budget gate checks the campaign cap and the monthly cap; over cap stops the run and waits for the owner (`AWAITING_BUDGET`: proceed, change cap, cancel).
 
-### F6. Execution Team, tahap 1: Videographer
-- Jalur `veo_api`: memanggil Gemini API (Veo). Draf memakai Lite 720p, final memakai Fast 1080p setelah approve. Hasil disimpan ke S3 sebagai `ShotAsset` versi baru.
-- Jalur `manual_upload`: menghasilkan **Prompt Package** per shot (lihat F7) dan menjeda alur sampai semua slot terisi.
-- Video 9:16, tiap shot sekitar 8 detik.
+### F6. Content Creator (Videographer)
+- `seedance_api`: draft tier first, final tier after approval; results saved as `ShotAsset` versions.
+- `manual_upload`: a Prompt Package per shot (copy-ready card) and an upload slot with ffprobe validation and attempt count. A failed Seedance shot opens a manual slot automatically.
+- The owner can request new talent from the Talent Manager (hand-off), who answers with a character from the library; locking it completes the request.
 
-### F7. Mode Manual Upload
-- Prompt Package per shot, ditampilkan sebagai kartu siap salin: prompt final (subjek, setting, gerak kamera, pencahayaan, gaya, rasio 9:16, durasi), dialog/VO Bahasa Indonesia dalam tanda kutip, catatan referensi (keyframe/karakter untuk dilampirkan), nama file yang diminta (mis. `kampanyeA_shot02_v1.mp4`), urutan generate dan tips konsistensi karakter.
-- Upload MP4 lewat presigned URL S3, satu slot per shot dengan riwayat versi.
-- Validasi otomatis (ffprobe): durasi, resolusi, rasio 9:16, keberadaan audio, ukuran file. Bila gagal, dasbor menjelaskan apa yang salah dan slot tetap terbuka.
-- Pencatatan biaya jalur ini: jumlah percobaan per shot (batas `maxAttempts`), bukan dolar video.
+### F7. Post-production
+FFmpeg joins the latest valid clips into a 1080×1920 H.264/AAC final cut with subtitles and thumbnail. Edit notes are not interpreted yet (known gap). Audio cleanup and music (ElevenLabs) are not built.
 
-### F8. Execution Team, tahap 2: Post-production
-Video Gemini sudah ber-audio, jadi tahap ini menyempurnakan, bukan membuat suara dari nol. Sama untuk kedua jalur.
-- **Transkriptor:** timestamp per kata dari audio klip (ElevenLabs Scribe atau Whisper), teks dikoreksi dengan `voLine` asli dari shot list.
-- **Subtitler:** subtitle bergaya brand (warna, font, animasi kata per kata), dibakar ke video (FFmpeg ASS atau Remotion).
-- **Audio Engineer:** Voice Isolator untuk membersihkan suara; opsional Voice Changer ke satu voice ID brand agar suara konsisten antar-shot; musik latar dengan ducking; normalisasi sekitar -14 LUFS.
-- **Editor:** gabung klip, transisi, intro/outro logo, end card CTA.
-- **Finisher:** export 1080×1920 H.264/AAC dengan moov atom di depan, thumbnail, caption dan hashtag per platform.
-- Output: `RenderBundle { clips[], captions.srt, finalCut.mp4, thumbnail.jpg }`.
+### F8. QC (Account Team)
+Text-only for now: captions, hashtags, brand-safety checklist and self score from the brief, concept and shot list: `ApprovalPackage`. Multimodal QC of the final cut is future work.
 
-### F9. Account Team (QC dan paket approval)
-- QC memakai Gemini multimodal: apakah visual sesuai shot list, dialog sesuai skrip, brand-safety.
-- Output: `ApprovalPackage { previewUrl, captionPerPlatform, hashtags, brandSafetyChecklist, selfScore, costSoFar }`.
+### F9. Approval, revision, regenerate (`/approval`)
+- 9:16 preview, version compare, Approve, Revise (notes), Regenerate (pick shots), Reject.
+- Before Regenerate, an estimate from `PriceBook` is shown; over cap needs an explicit confirmation.
+- Revision routing: the owner picks the target (Concept / Visuals / Edit) or a small LLM classifier does. Only that stage and later ones re-run.
+- Free restore of an earlier final cut, clip or artifact version.
+- Every decision becomes feedback for the target agent and an episodic memory.
 
-### F10. Approval, revisi, regenerasi
-- UI: pratinjau 9:16, perbandingan versi berdampingan, tombol Approve, Revisi (catatan teks), Regenerate (pilih shot), Reject.
-- Sebelum Regenerate, UI menampilkan estimasi: "regenerasi N shot × model × durasi ≈ US$X; total kampanye menjadi US$Y dari cap US$Z".
-- **Routing revisi:** LLM kecil mengklasifikasikan catatan ke agen sasaran (konsep → Creative Director, visual → Art Director, edit/tempo/subtitle → Post-production). Hanya tahap itu dan setelahnya yang diulang.
-- Revisi caption hanya memanggil LLM; revisi edit hanya me-render ulang tanpa menyentuh Gemini; regenerasi per shot, bukan seluruh video.
-- Timeout 7 hari → `EXPIRED` dan kirim pengingat (email).
-- Semua revisi menyimpan versi artefak, bisa dibandingkan dan dikembalikan tanpa biaya.
+### F10. Publishing and Buffer (`/connections`)
+- Channels sync from Buffer into `SocialAccount` (default off, one default per platform). Disconnected or locked channels raise a sidebar alert.
+- Modes: schedule, queue, draft, share now. Drafts convert to scheduled with `editPost`. TikTok posts carry the AI-generated flag; every post is `aiAssisted`.
+- Status is polled (video, growing intervals) or synced by cron (text posts, every 15 min). No webhooks.
+- Metrics (T+1h, T+24h, T+7d) are stored exactly as Buffer reports them; `impressions` and `plays` are never shown.
 
-### F11. Publikasi
-- **Instagram:** Graph API untuk Reels. Alur: `POST /{ig-user-id}/media` (`media_type=REELS`, `video_url` publik dari S3 presigned) → polling status container → `POST /media_publish`. Penjadwalan lewat `step.sleepUntil` karena API tidak punya parameter jadwal. Cek kuota lewat `GET /{ig-user-id}/content_publishing_limit` sebelum posting. Spesifikasi video H.264/HEVC + AAC, moov atom di depan.
-- **TikTok:** Content Posting API mode upload ke inbox (draft) atau Direct Post; sebelum audit lolos semua Direct Post otomatis privat (SELF_ONLY), jadi pakai mode inbox atau Orshot Publish. Ajukan audit TikTok sejak Fase 1.
-- Abstraksi `Publisher` (interface) dengan implementasi `InstagramGraphPublisher`, `TikTokInboxPublisher`. Orshot tidak dipakai sebagai publisher; publikasi lewat Buffer (14 Okt 2026).
-- Hasil: `PublishResult { platform, postId, permalink, status }`.
+### F11. Text posts (Socmed Specialist)
+- Ten content types with weights in `config/content-types.yaml`; angles in `config/angles.yaml`; banned phrases in `config/banned.yaml`. Each slot gets its own type with an anti-repeat rule and a weekly thread cap.
+- Per post: three variants from three angles, best usable variant wins, others are swappable.
+- Quality gate in layers: format and length per platform, language check, banned words, similarity against the last 30 days, source rules, real-person heuristic, then an LLM judge. Educational and data posts name their own source and confidence and are always reviewed (sources are not verified; the UI says so).
+- Optional Tavily research (facts from credible domains, or recent news).
+- Owner's writing voice from pasted tweets (one LLM call, stored in `Setting.writingVoice`); context files (notes as text, pictures described once by a vision model).
+- **Every post needs the owner's Approve** before it can be pushed to Buffer (enforced server-side). Reject removes it from the slots; Regenerate rewrites one post.
+- Schedule panel: slots in the owner's timezone, draft first then schedule; a second press never double-posts.
 
-### F12. Trend Scout
-- Job terjadwal harian (cron Inngest) memanggil vidIQ MCP dan menyimpan `TrendSignal { platform, url, outlierScore, hook, format, audio, capturedAt }`.
-- Cache hasil di Postgres untuk menghemat kredit vidIQ yang terbatas.
-- Account Manager mengambil 5 sinyal teratas yang relevan dengan niche kampanye.
+### F12. Trends (`/trends`)
+- TikTok: hashtags and top videos for 7 and 30 days in the owner's country, cached; a daily scheduled sync plus "Sync now". Caps per run and per month; blocked runs are recorded. `outlierScore` 0–10 for both types.
+- X and Threads pages are placeholders. The Account Manager and the text brief use the top signals; "used" is detected from `trendRefs`.
 
-### F13. Dasbor
-Lima halaman dalam satu aplikasi Next.js:
+### F13. Boards (`/boards`, home)
+- Cards: team focus (persona nickname, seniority, status, work items, last delivery), agent sessions (pipeline runs), agenda (scheduled posts, deadlines, decision timeouts), integrations status.
+- **Agent Roles** (`/boards/roles`): flow chart of ten roles, grouped by purpose (Planning, Creative, Production, Delivery) with a submenu per group. Each role opens a workspace: Quick task (direct task with estimate and budget gate, retry, send to flow), Current focus, role tabs, Artifacts (search, side-by-side compare), Memory, Results & feedback.
+- Archive search (Postgres `ILIKE` only): campaigns, reports, video, talent, assets, prompt packages, discussion notes, feedback.
 
-| Halaman | Isi |
+### F14. Analytics, Costs and Settings
+- **Analytics** (`/analytics`): post metrics from Buffer per window.
+- **Costs:** `CostEntry` is the single ledger (LLM, Seedance, Apify, tasks). Caps: all-provider monthly and per-campaign caps in `/settings`; LLM monthly, per-call and token caps in `/settings/ai`.
+- **Settings:** budget caps, default video source, timezone, AI model per agent, effort, image and video provider order, integrations.
+
+### F15. Agent personas and memory
+Persona (tone and perspective only) per role, versioned in `AgentProfile` with JSON defaults; three memory layers (episodic, lesson, procedural) with redaction, ranked recall inside pipeline runs only, and experience/seniority computed on read.
+
+### Sidebar
+
+Boards · Agent Roles (Planning, Creative, Production, Delivery) · Trends (TikTok, X, Threads) · Briefs (Library) · Campaigns (Approval, Publishing, Artifacts & results) · Analytics · Connections. Account menu: Accounts, Settings, Log out.
+
+---
+
+## 6. Data model (Prisma, conceptual)
+
+| Area | Entities |
 | --- | --- |
-| Pipeline | Kanban per kampanye, status tiap agen (antre, jalan, selesai, gagal), durasi, retry, tautan artefak |
-| Approval | Antrean menunggu keputusan, pratinjau, diff versi, tombol aksi dengan estimasi biaya, slot upload MP4 jalur manual |
-| Biaya | Total per kampanye, provider, agen, dan alasan (awal/revisi/regenerate); burn rate bulanan vs cap; biaya per video yang disetujui; rasio regenerasi |
-| Tren | Sinyal vidIQ terbaru, skor outlier, tren yang sudah dipakai jadi kampanye |
-| Analitik | Views, reach, interaksi, follower, engagement rate per post dan per konsep |
+| Core | `BrandKit`, `Setting`, `Campaign`, `Run`, `Step`, `Artifact`, `Shot`, `ShotAsset`, `Decision` |
+| Cost | `CostEntry` (single ledger), `PriceBook` (unique incl. unit), `AiSettings` |
+| Agents | `AgentProfile`, `AgentMemory`, `AgentMemoryUse`, `AgentTask`, `AgentFeedback`, `AgentMessage` |
+| Library | `CreativeAsset` (character, location, style; talent = character), `ContentFile` |
+| Trends | `TrendSourceSettings`, `TrendRun`, `TrendSignal` |
+| Publishing | `SocialAccount`, `PublishJob` (campaign video and text posts), `MetricSnapshot`, `IntegrationStatus` |
 
-Analitik Instagram: gunakan `views`, `reach`, likes, comments, saved, shares, `ig_reels_avg_watch_time`. Jangan memakai `impressions` dan `plays` (dihapus Meta sejak 21 April 2025). Analitik TikTok: Display API `/v2/video/list/` dan `/v2/video/query/` (scope `video.list`) untuk view, like, comment, share; `/v2/user/info/` (scope `user.info.stats`) untuk follower dan jumlah video. Metrik ditarik pada T+1 jam, T+24 jam, T+7 hari setelah posting. Umpan balik performa per konsep/hook/tren dikembalikan sebagai konteks untuk Creative Director.
-
----
-
-## 5. Model data (Prisma, tingkat konsep)
-
-| Entitas | Field penting |
-| --- | --- |
-| `BrandKit` | id, name, logoUrl, palette, fonts, voiceId, styleNotes |
-| `Campaign` | id, brandKitId, clientBrief (JSON), status, budgetCapUsd, createdAt |
-| `Run` | id, campaignId, inngestRunId, status, startedAt, endedAt |
-| `Step` | id, runId, agentRole, status, attempt, startedAt, endedAt, error |
-| `Artifact` | id, campaignId, agentRole, version, payload (JSON), costUsd, createdAt |
-| `Shot` | id, campaignId, shotId, source (`veo_api` / `manual_upload`), maxAttempts, status |
-| `ShotAsset` | id, shotId, version, s3Key, durationSec, hasAudio, validation (JSON), origin (`veo` / `upload`) |
-| `Decision` | id, campaignId, type (`approve` / `revise` / `regenerate` / `reject`), notes, targetAgent, shotIds[], createdAt |
-| `CostEntry` | id, campaignId, step, provider, model, units, unitPrice, usd, attempt, reason (`initial` / `revision` / `regenerate`) |
-| `PriceBook` | provider, model, unit, unitPrice, effectiveFrom |
-| `TrendSignal` | lihat F12 |
-| `PublishJob` | id, campaignId, platform, status, postId, permalink, scheduledAt |
-| `MetricSnapshot` | id, publishJobId, capturedAt, metrics (JSON) |
+`Artifact.campaignId` and `CostEntry.campaignId` are nullable (direct tasks and trend runs have no campaign).
 
 ---
 
-## 6. Kebutuhan non-fungsional
+## 7. Non-functional requirements
 
-- **Keandalan:** retry per langkah, tanpa pengulangan langkah yang sudah sukses; idempotency key untuk semua panggilan berbiaya; alur harus selamat dari restart server.
-- **Observabilitas:** log terstruktur per `campaignId` dan `step`; setiap kegagalan terlihat di dasbor Pipeline.
-- **Keamanan:** semua kunci API (Gemini, ElevenLabs, vidIQ, Meta, TikTok, Orshot) di secret manager/env, tidak di repo; akses dasbor hanya lewat Auth0; presigned URL berumur pendek; token OAuth Meta/TikTok disimpan terenkripsi.
-- **Kepatuhan:** beri label konten AI sesuai kebijakan platform; hanya musik berlisensi komersial; tidak ada scraping yang melanggar ketentuan layanan.
-- **Kinerja:** pembuatan Prompt Package dan satu langkah agen teks selesai di bawah 60 detik; dasbor memuat halaman utama di bawah 2 detik pada data wajar.
-- **Biaya:** semua biaya tercatat per panggilan; budget cap per kampanye dan per bulan ditegakkan di kode, bukan hanya UI.
-- **Bahasa:** UI dan keluaran konten dalam Bahasa Indonesia secara default.
-
----
-
-## 7. Rencana build (urut, dengan acceptance criteria)
-
-### Fase 0 — Spike dan Mode Manual Upload (minggu 1–2)
-Bangun: monorepo Next.js + Prisma + Inngest dev server; auth Auth0; form Client Brief; agen F2–F5 (output JSON); Videographer menghasilkan Prompt Package; slot upload dengan validasi ffprobe; post-production minimal (gabung klip + subtitle dengan FFmpeg); approval manual di dasbor.
-Acceptance:
-- [ ] Brief dikirim dan agen F2–F5 menghasilkan artefak yang lolos validasi Zod, tersimpan dengan versi.
-- [ ] Prompt Package tampil sebagai kartu siap salin untuk tiap shot.
-- [ ] MP4 yang tidak sesuai (bukan 9:16, tanpa audio) ditolak dengan pesan jelas.
-- [ ] Setelah semua slot terisi, alur lanjut otomatis dan menghasilkan `finalCut.mp4` 1080×1920 dengan subtitle.
-
-### Fase 1 — MVP end-to-end (minggu 3–5)
-Bangun: semua agen; `PriceBook`, `CostEntry`, budget gate; loop revisi/regenerate per shot dengan routing; post-production lengkap (ElevenLabs, Voice Isolator, musik, normalisasi); jalur Veo API (Lite draf, Fast final); publikasi Instagram (Graph API) dan TikTok (inbox atau Orshot); ajukan App Review Meta dan audit TikTok.
-Acceptance:
-- [ ] Satu kampanye berjalan dari brief sampai post terbit di Instagram dan draft/post di TikTok tanpa intervensi selain approval.
-- [ ] Estimasi biaya tampil sebelum Regenerate dan total kampanye tidak bisa melewati budget cap tanpa konfirmasi eksplisit.
-- [ ] Revisi "potong lebih cepat" hanya menjalankan ulang post-production, tanpa memanggil Gemini.
-- [ ] Retry setelah kegagalan tidak membuat biaya generate ganda (uji dengan menyuntikkan error).
-- [ ] Menunggu approval lebih dari 7 hari mengubah status menjadi `EXPIRED` dan mengirim pengingat.
-
-### Fase 2 — Tren dan analitik (minggu 6–8)
-Bangun: Trend Scout vidIQ terjadwal dengan cache; penarikan metrik Instagram dan TikTok (T+1 jam, T+24 jam, T+7 hari); halaman Tren, Analitik, Biaya.
-Acceptance:
-- [ ] Halaman Tren menampilkan sinyal harian dan menandai tren yang sudah dipakai kampanye.
-- [ ] Halaman Analitik menampilkan views, reach, engagement rate per post, tanpa metrik yang sudah dihapus.
-- [ ] Halaman Biaya menampilkan biaya per video yang disetujui dan rasio regenerasi.
-
-### Fase 3 — Optimasi (bulan 3 dan seterusnya)
-Umpan balik performa ke Creative Director; A/B hook; evaluasi otomatis sebelum approval; dukungan multi-brand.
+- **Reliability:** retry per step without repeating completed steps; idempotency keys on all costly calls; flows survive a server restart. Known accepted gap: a Seedance or Apify start that succeeds but fails before its id is stored can be repeated on retry.
+- **Observability:** Step rows are the structured log, shown per campaign on the Campaigns workflow page; every failure is visible there.
+- **Security:** keys only in env; Auth0 on the dashboard; short-lived presigned URLs; OAuth tokens encrypted with AES-256-GCM; secrets and personal data redacted before they are written to memory.
+- **Compliance:** AI-generated content flagged on platforms that support it; only commercially licensed music; no scraping against terms of service.
+- **Performance:** every Boards card reads Postgres only (no paid call on page load); one text agent step under 60 seconds.
+- **Cost:** every call is recorded; caps are enforced in code before the call, not only in the UI.
+- **Language:** English UI and output; text posts follow the topic or audience language.
+- **Tests:** `node:test` through `tsx` (`npm test`), no database or API key needed.
 
 ---
 
-## 8. Struktur repo yang disarankan
+## 8. Build status
 
-```
-mauagent/
-  apps/web/                 # Next.js: dasbor, API routes, Auth0
-  packages/agents/          # definisi agen, prompt, skema Zod per artefak
-  packages/workflows/       # fungsi Inngest (campaign-pipeline, trend-scout, metrics)
-  packages/providers/       # VideoProvider (Veo), Publisher (IG, TikTok, Orshot), ElevenLabs, vidIQ client
-  packages/media/           # FFmpeg/Remotion, ffprobe validator
-  packages/db/              # skema Prisma, seed PriceBook
-  infra/                    # Terraform/Docker, GitHub Actions
-  DECISIONS.md
-```
-
-Interface kunci:
-
-```ts
-interface VideoProvider { generate(shot: ShotSpec, opts: { tier: "draft" | "final" }): Promise<ShotAssetRef>; }
-interface Publisher { publish(pkg: ApprovalPackage, account: AccountRef): Promise<PublishResult>; }
-```
-
-`VideoProvider` hanya punya satu implementasi (Veo) saat ini, tetapi tetap dibuat sebagai interface agar mudah diganti bila harga atau versi model berubah.
-
----
-
-## 9. Estimasi biaya operasional (acuan anggaran)
-
-Asumsi: 30 video per bulan, tiap video 4 shot × 8 detik, rata-rata 2 percobaan per shot.
-
-| Komponen (USD per bulan) | Jalur Veo API | Jalur Manual Upload |
+| Phase | Scope | Status |
 | --- | --- | --- |
-| Video Veo 3.1 | 163–230 | 0 (kuota langganan) |
-| LLM semua agen | 10–40 | 10–40 |
-| ElevenLabs | 6–22 | 6–22 |
-| vidIQ | 19–49 | 19–49 |
-| Publikasi (Orshot, 2 akun) | 24 | 24 |
-| Infra AWS dan Inngest | 30–100 | 30–100 |
-| Total | 250–465 | 90–235 |
+| 0 | Next.js, Prisma, Inngest, Auth0, brief form, agents F2–F5, Prompt Package, manual upload with ffprobe validation, FFmpeg cut, manual approval | Done |
+| 1 | Budget gate, revise/regenerate with routing, QC, Seedance path, accounts and OAuth connect, publishing through Buffer, cost ledger | Done (Instagram Graph and TikTok direct publishers dropped in favour of Buffer) |
+| 2 | Trend Scout (Apify, TikTok), metrics from Buffer, Analytics, Costs | Done for TikTok trends and Buffer metrics; X and Threads trends not built |
+| 2.5 | Boards, role workspaces, direct tasks, personas and memory, feedback, archive, Agent Roles grouping | Done |
+| 2.6 | Text posts for X and Threads: content types, quality gate, voice, research, per-post approval, Buffer scheduling | Done |
+| 3 | Move video storage fully to Cloudinary; ElevenLabs audio; multimodal QC; vidIQ; direct Threads; Trigger.dev parity and cutover; deploy; performance feedback to the Creative Director; A/B hooks; multi-brand | Open |
 
-Catatan: langganan Google AI Plus tidak bisa dipakai memanggil Veo dari kode; jalur API ditagih terpisah. Harga vendor cepat berubah, jadi isi `PriceBook` dari halaman harga resmi saat implementasi.
+Open work, in order: finish the S3 → Cloudinary migration; Post-production edit notes and audio; multimodal QC; Trigger.dev cutover decision; deployment.
 
 ---
 
-## 10. Risiko dan pertanyaan terbuka
+## 9. Repo layout (actual)
 
-| Risiko/pertanyaan | Dampak | Penanganan |
+```
+src/app/            # pages: boards, brief, campaigns, approval, trends, analytics, connections, settings, accounts, api
+src/lib/agents/     # callLlm, personas, memory, Zod schemas
+src/lib/ai/         # OpenRouter client, failover, effort, image, settings
+src/lib/boards/     # roles, tasks, status, archive, outcome, feedback
+src/lib/content/    # text-post pipeline (types, prompt, validate, judge, research)
+src/lib/providers/  # buffer, apify-tiktok-trends, seedance, instagram, tiktok
+src/lib/workflows/  # Inngest functions (pipeline, publish, sync, metrics, trends)
+src/lib/media/      # FFmpeg cut and ffprobe validation
+src/trigger/        # Trigger.dev tasks and queues (evaluation)
+config/             # content-types, angles, banned (YAML)
+prisma/             # schema, migrations, seeds
+DECISIONS.md  PRD-MAUAGENT.md  docs/
+```
+
+Not an interface yet: `VideoProvider` (Seedance and Magic Hour are chosen by a provider order in settings; extract the interface when a third provider needs different behavior).
+
+---
+
+## 10. Operating cost (reference)
+
+Assumption: 30 videos a month, 4 shots × 8 s each, 2 attempts per shot on average. All prices are placeholders; fill `PriceBook` from the official pricing pages.
+
+| Component (USD per month) | Seedance path | Manual Upload path |
 | --- | --- | --- |
-| Audit TikTok lama atau ditolak | Post TikTok tidak bisa publik lewat API sendiri | Pakai mode inbox/draft atau Orshot; ajukan audit sejak Fase 1 |
-| App Review Meta memakan beberapa minggu | Publikasi Instagram tertunda | Uji dengan akun sendiri yang berperan di aplikasi; ajukan review sejak Fase 1 |
-| Video aplikasi Gemini mungkin berwatermark, durasi per generate pendek, kuota harian terbatas | Jalur manual kurang layak untuk produksi | Cek di akun AI Plus sebelum Fase 0 selesai; gunakan jalur manual untuk validasi dan shot hero saja |
-| Kredit vidIQ terbatas dan tanpa top-up | Trend Scout berhenti di tengah bulan | Cache hasil; batasi frekuensi panggilan; sumber tren cadangan manual |
-| Data Instagram/TikTok vidIQ bukan dari API resmi | Sinyal tren bisa bias | Perlakukan sebagai salah satu sinyal |
-| Konsistensi karakter dan suara antar-shot | Kualitas visual dan audio tidak seragam | Deskripsi karakter yang sama persis di semua prompt; Voice Changer ke satu voice ID |
-| ID model Veo di Vertex dijadwalkan pensiun paling cepat 17 November 2026 | Panggilan gagal setelah pensiun | Model ID di config; pantau changelog |
+| Video (Seedance) | per `PriceBook` | 0 |
+| LLM (OpenRouter) | 0–40 (a free model costs 0; cap in `/settings/ai`, default 40) | 0–40 |
+| Apify trends | about 0.055 per sync of 20 items; capped per run and month | same |
+| Buffer | plan price (API limits: 100 requests / 15 min per key) | same |
+| Cloudinary, hosting, DB | plan price | same |
+| Tavily | free tier or plan | same |
 
-Pertanyaan yang perlu dijawab pemilik produk sebelum Fase 1:
-1. Apakah jalur Manual Upload hanya untuk Fase 0, atau mode permanen?
-2. Akun Instagram dan TikTok mana yang jadi target awal, dan apakah sudah berjenis Business/Creator?
-3. Berapa budget cap default per kampanye dan per bulan?
-4. Channel pengingat approval: email saja, atau juga Telegram/WhatsApp?
+---
+
+## 11. Risks and open questions
+
+| Risk / question | Impact | Handling |
+| --- | --- | --- |
+| Buffer metrics need the personal API key | Moving to an OAuth app would break metrics | Stay on the personal key |
+| Buffer fetches media at publish time | Expiring URLs fail silently | Cloudinary permanent URLs (S3 presign is a stopgap: 6 h for scheduled, up to 7 days for queue) |
+| Seedance request fields come from secondary sources | Calls can fail | Verify against the official ModelArk docs before production |
+| Free LLM models invent specifics and sources | Wrong facts in posts | Educational and data posts always reviewed; sources shown as unverified |
+| Two orchestrators coexist | Double maintenance | Decide the cutover once Trigger.dev reaches parity |
+| A running dev server keeps the old Prisma client | Schema errors after migration | Stop the server, run `prisma generate`, restart |
+| Video clips are processed inside the web request | Long clips time out | Move FFmpeg to a worker when clips grow |
+| X Free plan limits (280 characters) | Longer posts are trimmed | `CHAR_LIMIT` in `src/lib/publish.ts` is the single place to raise it |
+
+Open questions for the owner:
+1. When should the Trigger.dev cutover happen, and which engine is the one to keep?
+2. Is a Threads channel going to be connected in Buffer (the Threads thread cap is assumed, not verified)?
+3. Is ElevenLabs still wanted for audio cleanup and music, or is Seedance's own audio enough?
+4. Should X and Threads trend pages get a source (and which one)?
