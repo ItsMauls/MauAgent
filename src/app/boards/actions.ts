@@ -239,7 +239,7 @@ export async function chatWithAgent(slug: string, raw: unknown) {
   if (!role || !isAgentRole(role.agentRole)) throw new Error("This agent cannot chat");
   const turns = ChatTurns.parse(raw);
   if (turns.at(-1)!.from !== "owner") throw new Error("The last message must be yours");
-  const [{ persona }, memory, s] = await Promise.all([getPersona(role.agentRole), roleMemoryBlock(role.agentRole), getSettings()]);
+  const [{ persona }, memory, s] = await Promise.all([getPersona(role.agentRole), roleMemoryBlock(role.agentRole, { chat: true }), getSettings()]);
   const system = `${personaSystem(role.agentRole, persona)}
 
 ${buildPersonaBlock(role.agentRole)}

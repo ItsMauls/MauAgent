@@ -65,6 +65,12 @@ let cached: AgentProfileSeed[] | undefined;
 export const profiles = () => (cached ??= parseProfiles(readFileSync(path.join(process.cwd(), "config", "agent-profiles.md"), "utf8")));
 export const profileOf = (agentRole: string) => profiles().find((p) => p.agentRole === agentRole) ?? null;
 
+/** Who said a team-discussion line: "Maul · Socmed Specialist", or the neutral system for the checks ("qc") and unknown senders. */
+export const speakerLabel = (who: string) => {
+  const p = who === "qc" ? null : profileOf(who);
+  return p ? `${p.name} · ${p.role}` : "Rule and quality checks";
+};
+
 /**
  * How an agent sounds in the TEAM conversation (Indonesian, aku/kamu). Never part of Persona, so it never reaches the
  * post writer or the QC judge: posts keep the account's own voice.

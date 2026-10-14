@@ -10,6 +10,8 @@ import { Empty } from "../../campaigns/[id]/shots";
 import { ArtifactsPanel, MemoryPanel } from "../workspace";
 import { FEATURES } from "../feature/features";
 import { initials, RoleAvatar, STATE_PILL } from "../cards";
+import { ProfileModal } from "../profile";
+import { profileOf } from "@/lib/agents/profiles";
 import { ScrapButton } from "../task-form";
 import { AgentChat } from "../chat";
 import type { WorkColumn, WorkItem } from "@/lib/boards/status";
@@ -83,13 +85,13 @@ export async function RoleDetail({ slug, sp }: { slug: string; sp: Record<string
     isAgentRole(role.agentRole) ? agentExperience().then((e) => e[role.agentRole as keyof typeof e]) : null,
     boardSnapshot().then((s) => roleWork(role.agentRole, s)),
   ]);
-  const name = persona?.nickname ?? role.label;
+  const name = persona?.nickname ?? profileOf(role.agentRole)?.name ?? role.label;
   const [stateLabel, stateCls] = STATE_PILL[work.state];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <header className="card flex shrink-0 flex-wrap items-center gap-5 p-6">
-        <RoleAvatar role={role.agentRole} className="h-16 w-16 shrink-0" />
+        <ProfileModal agentRole={role.agentRole} className="shrink-0 rounded-full" trigger={<RoleAvatar role={role.agentRole} className="h-16 w-16" />} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">{name}</h1>

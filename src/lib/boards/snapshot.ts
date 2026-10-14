@@ -1,6 +1,7 @@
 import type { CampaignStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { DEFAULT_PERSONAS, isAgentRole } from "@/lib/agents/persona";
+import { profileOf } from "@/lib/agents/profiles";
 import { Persona } from "@/lib/agents/schemas";
 import { ROLES, roleByAgent } from "./roles";
 import { GATE_OWNER, roleWork, taskTitle, type Snapshot } from "./status";
@@ -44,7 +45,7 @@ export async function agentNames() {
   const fromDb = new Map(rows.map((r) => [r.role, Persona.safeParse(r.persona)]));
   return Object.fromEntries(ROLES.map((r) => {
     const p = fromDb.get(r.agentRole);
-    const nick = p?.success ? p.data.nickname : isAgentRole(r.agentRole) ? DEFAULT_PERSONAS[r.agentRole].nickname : r.label;
+    const nick = p?.success ? p.data.nickname : isAgentRole(r.agentRole) ? DEFAULT_PERSONAS[r.agentRole].nickname : profileOf(r.agentRole)?.name ?? r.label;
     return [r.agentRole, nick];
   })) as Record<string, string>;
 }

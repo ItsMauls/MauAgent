@@ -12,6 +12,7 @@ import { automationAccounts, createAutomationCampaign } from "@/lib/automation/s
 import { automationEnv } from "@/lib/ai/env";
 import { dayKey } from "@/lib/boards/agenda";
 import { getSettings } from "@/lib/settings";
+import { CHAT_VOICE_TAG, writeMemory } from "@/lib/agents/memory";
 import { PLATFORM_LABEL } from "@/lib/automation/config";
 import { decideSlot, requeueSlot, setAutomationStatus } from "@/lib/automation/worker";
 
@@ -87,6 +88,26 @@ export async function regenerateSlot(id: string, slot: number) {
   const round = await requeueSlot(id, z.number().int().min(0).parse(slot));
   if (round !== null) await inngest.send({ name: "automation/chunk", id: `regen:${id}:${slot}:${round}`, data: { campaignId: id, slots: [slot], manual: true } });
   page(id);
+}
+
+const CHARACTER = {
+  too_faint: { label: "Character too faint", lesson: "In the team chat your character felt too faint: let your own voice show a little more. Tone only; facts and decisions stay the same." },
+  overdone: { label: "Character overdone", lesson: "In the team chat your character felt overdone: tone it down, fewer catchphrases, get to the point. Tone only; facts and decisions stay the same." },
+} as const;
+
+/**
+ * 👎 on how an agent sounded in the team discussion. Recorded as owner feedback and as a chat-voice lesson for that
+ * agent. Deliberately not writeFeedback: its memory would reach the post writer, and chat character must not.
+ */
+export async function characterFeedback(messageId: string, reason: keyof typeof CHARACTER) {
+  const r = z.enum(["too_faint", "overdone"]).parse(reason);
+  const m = await db.automationMessage.findUniqueOrThrow({ where: { id: z.string().min(1).parse(messageId) } });
+  if (!["accountManager", "socmedSpecialist", "postQc"].includes(m.who)) throw new Error("Only an agent's message can get character feedback");
+  const idemKey = `voicefb:${m.id}:${r}`;
+  await db.agentFeedback.upsert({ where: { idemKey }, create: { agentRole: m.who, source: "owner_note", sentiment: "negative", text: `${CHARACTER[r].label} (team discussion)`, idemKey }, update: {} });
+  const s = await getSettings();
+  if (s.memoryEnabled) await writeMemory({ role: m.who, layer: "lesson", content: CHARACTER[r].lesson, tags: [CHAT_VOICE_TAG], confidence: 1, idemKey });
+  page(m.automationCampaignId);
 }
 
 const AssistInput = z.object({ text: z.string().trim().min(1, "Describe the campaign first").max(ASSIST_MAX_CHARS), persona: z.string().max(PERSONA_MAX * 4).optional() });

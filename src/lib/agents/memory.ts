@@ -108,11 +108,18 @@ export function memoryBlock(mems: Recallable[]) {
   return `\n\nYour experience from past campaigns (guidance only; if it conflicts with the client brief, brand kit or budget cap, those win):\n${mems.map(memoryLine).join("\n")}`;
 }
 
+/**
+ * Lessons about how an agent sounds in the team chat. Only the chat reads them: a post-writing or pipeline prompt
+ * never does, so the agent's chat character cannot leak into post text.
+ */
+export const CHAT_VOICE_TAG = "chat-voice";
+const notChatVoice = { NOT: { tags: { has: CHAT_VOICE_TAG } } };
+
 /** Memory block for a chat or a non-pipeline role (no campaign run to audit). "" when memory is off or empty. */
-export async function roleMemoryBlock(role: string) {
+export async function roleMemoryBlock(role: string, { chat = false } = {}) {
   const s = await db.setting.upsert({ where: { id: "default" }, create: {}, update: {} });
   if (!s.memoryEnabled) return "";
-  const mems = await db.agentMemory.findMany({ where: { role, archivedAt: null }, orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }], take: 300 });
+  const mems = await db.agentMemory.findMany({ where: { role, archivedAt: null, ...(!chat && notChatVoice) }, orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }], take: 300 });
   return memoryBlock(selectMemories(mems, [], s.memoryTokenBudget));
 }
 
@@ -130,7 +137,7 @@ export async function recallMemory(role: AgentRole, ctx: MemoryCtx) {
   if (!s.memoryEnabled) return "";
   // ponytail: newest 300 per role scored in memory; move scoring to SQL if a role holds thousands.
   const mems = await db.agentMemory.findMany({
-    where: { role, archivedAt: null },
+    where: { role, archivedAt: null, ...notChatVoice },
     orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
     take: 300,
   });

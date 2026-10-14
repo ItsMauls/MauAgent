@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DEFAULT_PERSONAS } from "@/lib/agents/persona";
-import { profileOf } from "@/lib/agents/profiles";
+import { speakerLabel } from "@/lib/agents/profiles";
 import { AiBudgetError } from "@/lib/ai/generate";
 import { contentSetup } from "@/lib/content/config";
 import type { ContentDeps } from "@/lib/content/generate";
@@ -186,8 +186,7 @@ test("team discussion fixture: fail, retry, pass", async () => {
   let w = 0;
   const text = () => { w++; return w <= 3 ? `Follow for follow ya santai${w} sore${w}.` : `Santai${w} dulu${w} ini sore${w}.`; };
   const transcript: string[] = [];
-  const label = (who: string) => (who === "qc" ? "Rule and quality checks" : `${profileOf(who)!.name} · ${profileOf(who)!.role}`);
-  const say = async (who: string, t: string, slot?: number) => void transcript.push(`**${label(who)}** (post ${slot! + 1}): ${t}`);
+  const say = async (who: string, t: string, slot?: number) => void transcript.push(`**${speakerLabel(who)}** (post ${slot! + 1}): ${t}`);
   const c = content({ write: async (p, ctx) => (c.keys.push(ctx.idemKey), { payload: reply(p.type, Array.from({ length: p.n }, text)), costUsd: 0.01 }), note: async (n) => say(n.who, n.text, n.post) });
   const d = pipeline(c);
   const out = await runPost(job(), { idemKey: "k" }, { ...d, say });
